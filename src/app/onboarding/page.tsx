@@ -51,6 +51,19 @@ export default function OnboardingPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  // Restaure le dernier brouillon (permet de re-valider après un refresh)
+  useEffect(() => {
+    fetch("/api/draft")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.draft) {
+          setDraft(data.draft);
+          setSubscriptionId(data.draft.id);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   async function send() {
     if (!input.trim() || loading) return;
     const next = [...messages, { role: "user" as const, content: input.trim() }];

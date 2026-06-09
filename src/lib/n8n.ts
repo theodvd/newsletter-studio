@@ -9,7 +9,9 @@ const ENGINE_NODE_NAME = "Lancer le moteur";
 function baseUrl(): string {
   const url = process.env.N8N_API_URL;
   if (!url) throw new Error("N8N_API_URL manquant dans .env");
-  return url.replace(/\/$/, "");
+  // Tolère une URL sans schéma (ex: "n8n.exemple.com")
+  const withScheme = /^https?:\/\//.test(url) ? url : `https://${url}`;
+  return withScheme.replace(/\/$/, "");
 }
 
 async function n8nFetch(path: string, init: RequestInit = {}): Promise<unknown> {

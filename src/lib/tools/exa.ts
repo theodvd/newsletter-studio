@@ -15,7 +15,7 @@ export type ExaResult = { title: string | null; url: string; snippet: string | n
 export async function exaSearch(query: string): Promise<ExaResult[]> {
   const exa = getExa();
   const res = await exa.searchAndContents(query, {
-    numResults: 6,
+    numResults: 10,
     text: { maxCharacters: 300 },
   });
   return res.results.map((r) => ({ title: r.title, url: r.url, snippet: r.text ?? null }));
