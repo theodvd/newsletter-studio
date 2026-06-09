@@ -1,0 +1,16 @@
+# ═══════════════════════════════════════════════════════════
+# Newsletter Studio — à déployer sur le serveur, à côté de n8n.
+# Prérequis : un fichier .env rempli (voir .env.example).
+# ═══════════════════════════════════════════════════════════
+services:
+  newsletter-studio:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+    env_file: .env
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
