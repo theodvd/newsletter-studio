@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
@@ -25,8 +25,39 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
   const searchParams = useSearchParams();
   const authFailed = searchParams.get("error") === "auth";
+
+  // Décompte avant de pouvoir redemander un lien (throttle Supabase: 60s)
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
+
+  /** Connexion par le code à 6 chiffres — marche dans n'importe quel navigateur */
+  async function handleVerifyCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (code.trim().length < 6 || verifying) return;
+    setVerifying(true);
+    setCodeError(null);
+    const supabase = createClient();
+    const { error } = await supabase.auth.verifyOtp({
+      email,
+      token: code.trim(),
+      type: "email",
+    });
+    if (error) {
+      setCodeError("Invalid or expired code — request a new link below.");
+      setVerifying(false);
+    } else {
+      window.location.href = "/";
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,15 +71,20 @@ function LoginForm() {
       },
     });
     if (error) {
-      // Le trigger de capacité (30 comptes) fait échouer la création du compte
+      // Trigger de capacité (30 comptes) ou throttle 60s entre deux demandes
       setErrorMsg(
         /database error/i.test(error.message)
           ? "We're at capacity for this beta (30 testers). Ask Theo for a seat."
-          : "Could not send the link — try again."
+          : /rate limit|security purposes|seconds/i.test(error.message)
+            ? "A link was just sent — wait a minute before requesting another one."
+            : "Could not send the link — try again."
       );
       setStatus("error");
     } else {
       setStatus("sent");
+      setCooldown(60);
+      setCode("");
+      setCodeError(null);
     }
   }
 
@@ -94,11 +130,47 @@ function LoginForm() {
             initial={{ opacity: 0, scale: 0.96 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5, ease }}
-            className="py-4 text-center"
+            className="py-2"
           >
-            <p className="font-display font-medium text-white">Link sent</p>
-            <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              Check your inbox and open the link <strong>in this browser</strong> to sign in.
+            <p className="font-display text-center font-medium text-white">Check your inbox</p>
+            <p className="mt-2 text-center text-sm leading-relaxed text-slate-400">
+              Open the link in this browser, <strong>or enter the 6-digit code</strong> from
+              the email — that works anywhere.
+            </p>
+
+            <form onSubmit={handleVerifyCode} className="mt-5 flex gap-2">
+              <input
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                placeholder="123456"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center font-display text-lg tracking-[0.4em] text-white placeholder-slate-700 outline-none transition-colors focus:border-accent/60"
+              />
+              <button
+                type="submit"
+                disabled={code.length < 6 || verifying}
+                className="rounded-xl bg-gradient-to-r from-sky-400/90 to-cyan-300/90 px-5 font-display text-sm font-semibold text-slate-950 disabled:opacity-40"
+              >
+                {verifying ? "…" : "Sign in"}
+              </button>
+            </form>
+            {codeError && <p className="mt-2 text-sm text-red-400">{codeError}</p>}
+
+            <p className="mt-5 text-center text-xs text-slate-500">
+              Nothing received? Check spam — and in Gmail, make sure you open the{" "}
+              <strong>newest</strong> email in the thread.{" "}
+              {cooldown > 0 ? (
+                <span className="text-slate-600">Resend available in {cooldown}s</span>
+              ) : (
+                <button
+                  onClick={(e) => handleSubmit(e as unknown as React.FormEvent)}
+                  className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
+                >
+                  Resend the email
+                </button>
+              )}
             </p>
           </motion.div>
         ) : (
