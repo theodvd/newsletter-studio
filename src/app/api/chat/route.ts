@@ -6,6 +6,8 @@ import { exaSearch, exaFindSimilar } from "@/lib/tools/exa";
 import { validateSource } from "@/lib/tools/validate-source";
 import { encryptSecret } from "@/lib/crypto";
 import { updateUserWorkflow } from "@/lib/n8n";
+import { costUsd } from "@/lib/pricing";
+import { MONTHLY_CAP_USD, monthlySpendUsd } from "@/lib/usage";
 
 export const maxDuration = 120;
 
@@ -211,6 +213,17 @@ export async function POST(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
+  // Plafond mensuel : on bloque AVANT d'appeler Claude
+  const spend = await monthlySpendUsd(supabase);
+  if (spend >= MONTHLY_CAP_USD) {
+    return NextResponse.json(
+      {
+        error: `You've reached your monthly usage cap ($${MONTHLY_CAP_USD.toFixed(2)}). It resets on the 1st — your running digests keep going until then.`,
+      },
+      { status: 429 }
+    );
+  }
+
   const { messages, subscriptionId: knownSubscriptionId } = await request.json();
 
   // Contexte de la config existante (mode édition d'une veille active comprise)
@@ -287,6 +300,17 @@ export async function POST(request: Request) {
       results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result) });
     }
     conversation.push({ role: "user", content: results });
+  }
+
+  // Log de la dépense réelle du tour (pour le plafond mensuel)
+  if (usage.input_tokens + usage.output_tokens > 0) {
+    await supabase.from("usage_log").insert({
+      user_id: user.id,
+      kind: "chat",
+      input_tokens: usage.input_tokens,
+      output_tokens: usage.output_tokens,
+      cost_usd: costUsd(usage.input_tokens, usage.output_tokens).toFixed(4),
+    });
   }
 
   // Recharge le brouillon pour l'encart de récap côté client

@@ -154,8 +154,8 @@ function Onboarding() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: next, subscriptionId }),
       });
-      if (!res.ok) throw new Error(`Request failed (${res.status})`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       setMessages([...next, { role: "assistant", content: data.reply || "…" }]);
       if (data.subscriptionId) setSubscriptionId(data.subscriptionId);
       if (data.draft) setDraft(data.draft);

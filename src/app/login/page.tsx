@@ -24,12 +24,14 @@ const ease = [0.2, 0.8, 0.2, 1] as const;
 function LoginForm() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const searchParams = useSearchParams();
   const authFailed = searchParams.get("error") === "auth";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setStatus("sending");
+    setErrorMsg(null);
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOtp({
       email,
@@ -37,7 +39,17 @@ function LoginForm() {
         emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
       },
     });
-    setStatus(error ? "error" : "sent");
+    if (error) {
+      // Le trigger de capacité (30 comptes) fait échouer la création du compte
+      setErrorMsg(
+        /database error/i.test(error.message)
+          ? "We're at capacity for this beta (30 testers). Ask Theo for a seat."
+          : "Could not send the link — try again."
+      );
+      setStatus("error");
+    } else {
+      setStatus("sent");
+    }
   }
 
   return (
@@ -109,9 +121,7 @@ function LoginForm() {
             >
               {status === "sending" ? "Sending…" : "Send me a sign-in link"}
             </button>
-            {status === "error" && (
-              <p className="text-sm text-red-400">Could not send the link — try again.</p>
-            )}
+            {status === "error" && <p className="text-sm text-red-400">{errorMsg}</p>}
           </form>
         )}
       </motion.div>

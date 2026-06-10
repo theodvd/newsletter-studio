@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createUserWorkflow } from "@/lib/n8n";
+import { runsPerWeek } from "@/lib/pricing";
+import { MONTHLY_CAP_USD, monthlySpendUsd, projectedMonthlyCostUsd } from "@/lib/usage";
 
 /**
  * Provisioning : à la validation du brouillon, crée le workflow fin
@@ -44,6 +46,23 @@ export async function POST(request: Request) {
   }
   if (sub.n8n_workflow_id) {
     return NextResponse.json({ error: "This digest already has a workflow.", workflowId: sub.n8n_workflow_id }, { status: 409 });
+  }
+
+  // Plafond mensuel : dépense réelle + coût projeté des digests actifs + celui-ci
+  const { data: actives } = await supabase
+    .from("subscriptions")
+    .select("frequency_cron")
+    .eq("status", "active");
+  const crons = [...(actives ?? []).map((a) => a.frequency_cron), sub.frequency_cron];
+  const projected = projectedMonthlyCostUsd(crons, runsPerWeek);
+  const spent = await monthlySpendUsd(supabase);
+  if (spent + projected > MONTHLY_CAP_USD) {
+    return NextResponse.json(
+      {
+        error: `This schedule would exceed your $${MONTHLY_CAP_USD.toFixed(2)}/month budget (projected ~$${(spent + projected).toFixed(2)}). Try a lower frequency, or pause another digest.`,
+      },
+      { status: 403 }
+    );
   }
 
   try {
