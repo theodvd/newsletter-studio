@@ -6,8 +6,15 @@ description: Interviewe l'utilisateur sur son métier, ses projets et ses besoin
 # Profil de veille — préparer son brief pour Lia
 
 Tu vas aider l'utilisateur à préparer le **message de présentation** qu'il collera dans
-Newsletter Studio (l'app où l'agent Lia configure sa veille personnalisée Slack/email).
-Plus ce brief est riche et précis, plus sa veille sera pertinente.
+Newsletter Studio — **https://news.tiro.agency** — l'app où l'agent Lia configure sa
+veille personnalisée Slack/email. Plus ce brief est riche et précis, plus sa veille
+sera pertinente.
+
+Notes sur l'app : l'interface est en anglais mais Lia répond dans la langue de
+l'utilisateur — produis le brief dans la langue de l'interview. Si le canal choisi
+est Slack, la connexion se fait en un clic dans l'app (bouton « Connect Slack »,
+choix du workspace et du canal dans l'écran officiel Slack) : inutile de demander
+un identifiant de channel ou un token.
 
 ## Étape 1 — Interview (questions par groupes de 2-3, jamais tout d'un coup)
 
@@ -28,7 +35,9 @@ Couvre ces dimensions, en t'adaptant aux réponses :
 7. **Format** : canal (Slack ou email), fréquence (quotidien, 2x/jour, hebdo, bi-hebdo),
    ton souhaité (synthétique, analytique, décontracté), langue.
 8. **Profondeur** : plutôt scan rapide de titres ou analyse détaillée ?
-   (ça déterminera le nombre de sources et la longueur des éditions)
+   (ça déterminera le nombre de sources et la longueur des éditions — une veille
+   quotidienne demande plus de sources, ~6-10 ; une synthèse hebdo se contente
+   de 3-5 références solides)
 
 ## Étape 2 — Générer le brief
 
