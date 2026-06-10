@@ -52,7 +52,9 @@ function LoginForm() {
       type: "email",
     });
     if (error) {
-      setCodeError("Invalid or expired code — request a new link below.");
+      setCodeError(
+        `That code doesn't match ${email} — make sure it comes from the email we just sent to that exact address, or resend below.`
+      );
       setVerifying(false);
     } else {
       window.location.href = "/";
@@ -134,8 +136,9 @@ function LoginForm() {
           >
             <p className="font-display text-center font-medium text-white">Check your inbox</p>
             <p className="mt-2 text-center text-sm leading-relaxed text-slate-400">
-              Open the link in this browser, <strong>or enter the 6-digit code</strong> from
-              the email — that works anywhere.
+              We emailed <strong className="text-ice">{email}</strong>. Open the link in this
+              browser, <strong>or enter the 6-digit code</strong> from that email — the code
+              works anywhere.
             </p>
 
             <form onSubmit={handleVerifyCode} className="mt-5 flex gap-2">
@@ -170,7 +173,18 @@ function LoginForm() {
                 >
                   Resend the email
                 </button>
-              )}
+              )}{" "}
+              ·{" "}
+              <button
+                onClick={() => {
+                  setStatus("idle");
+                  setCode("");
+                  setCodeError(null);
+                }}
+                className="text-slate-400 underline decoration-slate-600 underline-offset-2 hover:text-slate-200"
+              >
+                Use a different email
+              </button>
             </p>
           </motion.div>
         ) : (
