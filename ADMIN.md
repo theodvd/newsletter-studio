@@ -58,13 +58,20 @@ n8n → **Veille Engine** → double-clic sur le node « Reçoit subscription_id
 *Edit output* / pin data avec `{ "subscription_id": "<id de la veille>" }` → Execute workflow.
 La subscription de test : `22222222-2222-4222-8222-222222222222`.
 
-## 🚀 Déployer l'app sur le serveur
+## 🚀 Production : https://news.tiro.agency
 
+L'app tourne sur le serveur Hetzner (`root@votre-serveur`, dossier `/root/newsletter-studio`),
+conteneur `newsletter-studio` routé par Caddy (`/root/Caddyfile`) sur le réseau `openclaw_web`.
+Le `.env` de prod est sur le serveur (avec `NEXT_PUBLIC_APP_URL=https://news.tiro.agency`).
+
+**Mettre à jour la prod** (depuis le Mac, à la racine du repo) :
 ```bash
-# .env rempli à la racine (voir .env.example)
-docker compose up -d --build
+rsync -az --exclude node_modules --exclude .next --exclude '.env*' --exclude .git \
+  ./ root@votre-serveur:/root/newsletter-studio/
+ssh root@votre-serveur 'cd /root/newsletter-studio && docker compose up -d --build'
 ```
-En dev local : `npm run dev` (avec `.env.local`).
+
+En dev local : `npm run dev` (avec `.env.local`, qui garde l'URL localhost).
 
 ## ⚠️ Pièges connus
 
