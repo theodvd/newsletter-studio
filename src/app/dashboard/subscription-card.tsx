@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ENGINE_RUN_COST_USD, formatUsd, runsPerWeek } from "@/lib/pricing";
+import { describeCron } from "@/lib/cron";
 
 /**
  * One digest card: status, schedule, last 3 deliveries,
@@ -89,12 +90,9 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
               {paused ? "Paused" : "Active"}
             </span>
           </div>
-          <p className="mt-2 truncate text-sm text-slate-400">
-            {destinationLabel} ·{" "}
-            <code className="rounded bg-white/5 px-1.5 py-0.5 text-xs text-ice">
-              {subscription.frequency_cron}
-            </code>{" "}
-            · {subscription.sources?.length ?? 0} source{(subscription.sources?.length ?? 0) > 1 ? "s" : ""} ·{" "}
+          <p className="mt-2 truncate text-sm text-slate-400" title={subscription.frequency_cron}>
+            {destinationLabel} · {describeCron(subscription.frequency_cron)} ·{" "}
+            {subscription.sources?.length ?? 0} source{(subscription.sources?.length ?? 0) > 1 ? "s" : ""} ·{" "}
             <span className="text-slate-300">~{formatUsd(weeklyCost)}/week</span>
           </p>
           {lastDeliveries.length > 0 && (

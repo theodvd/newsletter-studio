@@ -32,8 +32,12 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (sub.channel === "email" && !sub.destination) {
-    return NextResponse.json({ error: "Missing recipient email address." }, { status: 400 });
+  // Anti-spam : un digest email ne part que vers l'adresse du compte connecté
+  if (sub.channel === "email" && sub.destination !== user.email) {
+    return NextResponse.json(
+      { error: "Email digests can only be sent to your own account email." },
+      { status: 403 }
+    );
   }
   if (!sub.sources?.length) {
     return NextResponse.json({ error: "No sources configured yet — finish the conversation with Lia." }, { status: 400 });

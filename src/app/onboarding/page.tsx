@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ENGINE_RUN_COST_USD, costUsd, formatUsd, runsPerWeek } from "@/lib/pricing";
+import { describeCron } from "@/lib/cron";
 
 /**
  * Conversational onboarding with Lia.
@@ -335,11 +336,8 @@ function Onboarding() {
                     Connect Slack
                   </a>
                 )}
-                <p>
-                  Schedule{" "}
-                  <code className="rounded bg-white/5 px-1.5 py-0.5 text-xs text-ice">
-                    {draft.frequency_cron}
-                  </code>
+                <p title={draft.frequency_cron}>
+                  Schedule <span className="text-slate-300">— {describeCron(draft.frequency_cron)}</span>
                 </p>
                 {draft.tone && <p>Tone — {draft.tone}</p>}
               </div>

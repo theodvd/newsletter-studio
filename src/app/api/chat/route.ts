@@ -57,7 +57,7 @@ const TOOLS: Anthropic.Tool[] = [
         profile_prompt: { type: "string", description: "Résumé riche du profil et des besoins (sert à personnaliser chaque édition)" },
         frequency_cron: { type: "string", description: "Fréquence en cron 5 champs, ex: '0 7 * * 1-5'" },
         channel: { type: "string", enum: ["slack", "email"] },
-        destination: { type: "string", description: "Adresse email du destinataire (canal email). Pour Slack : LAISSER VIDE — l'utilisateur connectera son workspace via le bouton « Connecter Slack » du récap." },
+        destination: { type: "string", description: "LAISSER VIDE dans tous les cas. Email : le digest part automatiquement vers l'adresse du compte connecté (anti-spam, non modifiable). Slack : l'utilisateur connectera son workspace via le bouton « Connect Slack » du récap." },
         tone: { type: "string" },
         language: { type: "string", description: "Code langue, ex: 'fr'" },
         sources: {
@@ -101,15 +101,18 @@ type SaveConfigInput = {
   }>;
 };
 
-async function saveConfig(userId: string, input: SaveConfigInput) {
+async function saveConfig(userId: string, userEmail: string, input: SaveConfigInput) {
   const supabase = createClient();
+  // Anti-spam : un digest email ne peut partir que vers l'adresse du compte.
+  // Imposé ici (côté serveur), quoi que l'agent ou le client envoient.
+  const destination = input.channel === "email" ? userEmail : input.destination || null;
   const row: Record<string, unknown> = {
     user_id: userId,
     name: input.name,
     profile_prompt: input.profile_prompt,
     frequency_cron: input.frequency_cron,
     channel: input.channel,
-    destination: input.destination || null,
+    destination,
     tone: input.tone ?? null,
     language: input.language ?? "fr",
     status: "draft",
@@ -181,7 +184,12 @@ async function saveConfig(userId: string, input: SaveConfigInput) {
   return { subscription_id: subscriptionId, saved: true, workflow_schedule_synced: workflowSynced };
 }
 
-async function runTool(name: string, input: Record<string, unknown>, userId: string): Promise<unknown> {
+async function runTool(
+  name: string,
+  input: Record<string, unknown>,
+  userId: string,
+  userEmail: string
+): Promise<unknown> {
   switch (name) {
     case "validate_source":
       return validateSource(String(input.url));
@@ -190,7 +198,7 @@ async function runTool(name: string, input: Record<string, unknown>, userId: str
     case "exa_find_similar":
       return exaFindSimilar(String(input.url));
     case "save_subscription_config":
-      return saveConfig(userId, input as unknown as SaveConfigInput);
+      return saveConfig(userId, userEmail, input as unknown as SaveConfigInput);
     default:
       return { error: `Tool inconnu: ${name}` };
   }
@@ -269,7 +277,7 @@ export async function POST(request: Request) {
     for (const tu of toolUses) {
       let result: unknown;
       try {
-        result = await runTool(tu.name, tu.input as Record<string, unknown>, user.id);
+        result = await runTool(tu.name, tu.input as Record<string, unknown>, user.id, user.email ?? "");
         if (tu.name === "save_subscription_config" && result && typeof result === "object") {
           subscriptionId = (result as { subscription_id: string }).subscription_id;
         }
