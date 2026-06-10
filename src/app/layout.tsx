@@ -1,33 +1,45 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { Space_Grotesk } from "next/font/google";
 import "./globals.css";
+import { Aurora } from "@/components/aurora";
+import { Nav } from "@/components/nav";
+import { createClient } from "@/lib/supabase/server";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",
   weight: "100 900",
 });
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
+
+// Typo display : Space Grotesk pour les titres (DA glacée, tracking serré)
+const spaceGrotesk = Space_Grotesk({
+  subsets: ["latin"],
+  variable: "--font-display",
 });
 
 export const metadata: Metadata = {
   title: "Newsletter Studio — Lia",
-  description: "Configure ta veille personnalisée avec Lia",
+  description: "Ta veille sur mesure, conçue en discutant avec Lia",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <html lang="fr">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-slate-950 text-slate-100 antialiased`}
+        className={`${geistSans.variable} ${spaceGrotesk.variable} min-h-screen text-slate-100 antialiased`}
       >
+        <Aurora />
+        {user && <Nav />}
         {children}
       </body>
     </html>

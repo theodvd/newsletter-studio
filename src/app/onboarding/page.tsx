@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
 
 /**
  * Onboarding conversationnel avec Lia.
@@ -35,6 +36,8 @@ type Draft = {
 
 const WELCOME =
   "Salut, moi c'est Lia 👋 Je vais t'aider à monter ta veille sur mesure.\n\nPour commencer : c'est quoi ton rôle, et qu'est-ce que tu aimerais suivre au quotidien ?";
+
+const ease = [0.2, 0.8, 0.2, 1] as const;
 
 export default function OnboardingPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([{ role: "assistant", content: WELCOME }]);
@@ -110,36 +113,62 @@ export default function OnboardingPage() {
   }
 
   return (
-    <main className="mx-auto flex h-screen max-w-6xl gap-6 px-6 py-6">
+    <main className="mx-auto flex h-screen max-w-6xl gap-5 px-4 pb-5 pt-24">
       {/* Chat */}
-      <section className="flex min-w-0 flex-1 flex-col rounded-2xl border border-slate-800 bg-slate-900">
-        <header className="border-b border-slate-800 px-5 py-3">
-          <h1 className="font-medium text-white">✨ Nouvelle veille avec Lia</h1>
+      <section className="glass flex min-w-0 flex-1 flex-col overflow-hidden rounded-3xl">
+        <header className="flex items-center gap-3 border-b border-white/[0.06] px-6 py-4">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-sky-400/30 to-cyan-300/20 text-base">
+            ❄︎
+          </span>
+          <div>
+            <h1 className="font-display text-sm font-semibold tracking-tight text-white">Lia</h1>
+            <p className="text-xs text-slate-500">conçoit ta veille avec toi</p>
+          </div>
         </header>
-        <div className="flex-1 space-y-4 overflow-y-auto p-5">
-          {messages.map((m, i) => (
-            <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-              <div
-                className={
-                  m.role === "user"
-                    ? "max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-sm bg-indigo-600 px-4 py-2.5 text-sm text-white"
-                    : "max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-bl-sm bg-slate-800 px-4 py-2.5 text-sm text-slate-100"
-                }
+
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 py-6">
+          <AnimatePresence initial={false}>
+            {messages.map((m, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 14, filter: "blur(4px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.5, ease }}
+                className={m.role === "user" ? "flex justify-end" : "flex justify-start"}
               >
-                {m.content}
-              </div>
-            </div>
-          ))}
+                <div
+                  className={
+                    m.role === "user"
+                      ? "max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-gradient-to-br from-sky-500/80 to-cyan-400/70 px-4 py-3 text-sm leading-relaxed text-slate-950"
+                      : "max-w-[80%] whitespace-pre-wrap rounded-2xl rounded-bl-md border border-white/[0.06] bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-slate-100"
+                  }
+                >
+                  {m.content}
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
           {loading && (
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-indigo-400" />
-              Lia réfléchit (recherche et validation des sources)…
-            </div>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex items-center gap-3 text-xs text-slate-500"
+            >
+              <span className="flex items-center gap-1 rounded-full border border-white/[0.06] bg-white/[0.04] px-3 py-2.5">
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+              </span>
+              Lia recherche et valide les sources…
+            </motion.div>
           )}
           <div ref={bottomRef} />
         </div>
-        {error && <p className="px-5 pb-2 text-sm text-red-400">{error}</p>}
-        <footer className="border-t border-slate-800 p-4">
+
+        {error && <p className="px-6 pb-2 text-sm text-red-400">{error}</p>}
+
+        <footer className="border-t border-white/[0.06] p-4">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -151,12 +180,12 @@ export default function OnboardingPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Réponds à Lia…"
-              className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+              className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white placeholder-slate-600 outline-none transition-colors focus:border-accent/50 focus:bg-white/[0.06]"
             />
             <button
               type="submit"
               disabled={loading || !input.trim()}
-              className="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
+              className="rounded-xl bg-gradient-to-r from-sky-400/90 to-cyan-300/90 px-5 py-3 font-display text-sm font-semibold text-slate-950 transition-all duration-300 hover:shadow-[0_0_24px_rgba(124,198,255,0.3)] disabled:opacity-30"
             >
               Envoyer
             </button>
@@ -166,43 +195,77 @@ export default function OnboardingPage() {
 
       {/* Récap du brouillon */}
       <aside className="hidden w-80 shrink-0 flex-col gap-4 lg:flex">
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Récap de ta veille</h2>
+        <div className="glass rounded-3xl p-6">
+          <h2 className="font-display text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+            Récap de ta veille
+          </h2>
           {!draft ? (
-            <p className="mt-3 text-sm text-slate-500">
-              Le récap apparaîtra ici au fil de la conversation.
+            <p className="mt-4 text-sm leading-relaxed text-slate-500">
+              Le récap se construira ici au fil de la conversation.
             </p>
           ) : (
-            <div className="mt-3 space-y-3 text-sm">
-              <p className="font-medium text-white">{draft.name}</p>
-              <p className="text-slate-400">
-                {draft.channel === "slack" ? "💬 Slack" : "📧 Email"} → {draft.destination}
+            <motion.div
+              key={JSON.stringify(draft.sources?.length) + draft.name}
+              initial={{ opacity: 0.5 }}
+              animate={{ opacity: 1 }}
+              className="mt-4 space-y-4 text-sm"
+            >
+              <p className="font-display text-base font-semibold tracking-tight text-white">
+                {draft.name}
               </p>
-              <p className="text-slate-400">⏰ Cron : <code className="text-slate-300">{draft.frequency_cron}</code></p>
-              {draft.tone && <p className="text-slate-400">🎯 Ton : {draft.tone}</p>}
+              <div className="space-y-1.5 text-slate-400">
+                <p>
+                  {draft.channel === "slack" ? "💬 Slack" : "📧 Email"}{" "}
+                  <span className="text-slate-300">→ {draft.destination}</span>
+                </p>
+                <p>
+                  ⏰ <code className="rounded bg-white/5 px-1.5 py-0.5 text-xs text-ice">{draft.frequency_cron}</code>
+                </p>
+                {draft.tone && <p>🎯 {draft.tone}</p>}
+              </div>
               <div>
-                <p className="mb-1 text-slate-400">Sources ({draft.sources?.length ?? 0}) :</p>
-                <ul className="space-y-1">
+                <p className="mb-2 text-xs uppercase tracking-widest text-slate-600">
+                  Sources · {draft.sources?.length ?? 0}
+                </p>
+                <ul className="space-y-1.5">
                   {draft.sources?.map((s, i) => (
-                    <li key={i} className="truncate text-slate-300">
-                      {s.validation_status === "valid" ? "✅" : "⚠️"} {s.title || s.url}
-                      {s.added_by === "lia" && <span className="ml-1 text-xs text-indigo-400">(Lia)</span>}
-                    </li>
+                    <motion.li
+                      key={s.url}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05, duration: 0.4, ease }}
+                      className="flex items-center gap-2 truncate text-slate-300"
+                    >
+                      <span>{s.validation_status === "valid" ? "✅" : "⚠️"}</span>
+                      <span className="truncate">{s.title || s.url}</span>
+                      {s.added_by === "lia" && (
+                        <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent">
+                          Lia
+                        </span>
+                      )}
+                    </motion.li>
                   ))}
                 </ul>
               </div>
-            </div>
+            </motion.div>
           )}
         </div>
-        {draft && (
-          <button
-            onClick={provision}
-            disabled={provisioning}
-            className="rounded-2xl bg-emerald-600 px-5 py-3 font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {provisioning ? "Création du workflow…" : "🚀 Valider et lancer ma veille"}
-          </button>
-        )}
+
+        <AnimatePresence>
+          {draft && (
+            <motion.button
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease }}
+              onClick={provision}
+              disabled={provisioning}
+              className="rounded-2xl bg-gradient-to-r from-emerald-400/90 to-teal-300/90 px-5 py-4 font-display font-semibold tracking-tight text-slate-950 transition-all duration-300 hover:shadow-[0_0_30px_rgba(52,211,153,0.3)] disabled:opacity-50"
+            >
+              {provisioning ? "Création du workflow…" : "🚀 Valider et lancer ma veille"}
+            </motion.button>
+          )}
+        </AnimatePresence>
       </aside>
     </main>
   );

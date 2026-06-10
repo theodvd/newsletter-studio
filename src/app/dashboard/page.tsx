@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { Reveal, Stagger, StaggerItem } from "@/components/reveal";
 import { SubscriptionCard } from "./subscription-card";
 
 export const dynamic = "force-dynamic";
@@ -19,36 +20,45 @@ export default async function DashboardPage() {
     .order("created_at", { ascending: false });
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-white">📋 Mes veilles</h1>
+    <main className="mx-auto max-w-4xl px-6 pb-24 pt-32">
+      <Reveal className="flex items-end justify-between gap-4">
+        <div>
+          <p className="font-display text-xs uppercase tracking-[0.3em] text-accent/70">
+            Dashboard
+          </p>
+          <h1 className="font-display mt-3 text-4xl font-semibold tracking-tight text-ice">
+            Mes veilles
+          </h1>
+        </div>
         <Link
           href="/onboarding"
-          className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+          className="rounded-xl bg-gradient-to-r from-sky-400/90 to-cyan-300/90 px-4 py-2.5 font-display text-sm font-semibold text-slate-950 transition-all duration-300 hover:shadow-[0_0_24px_rgba(124,198,255,0.3)]"
         >
           ✨ Nouvelle veille
         </Link>
-      </div>
+      </Reveal>
 
       {!subscriptions?.length ? (
-        <div className="mt-12 rounded-2xl border border-dashed border-slate-700 p-12 text-center">
-          <p className="text-slate-400">Aucune veille active pour l&apos;instant.</p>
-          <p className="mt-1 text-sm text-slate-500">
-            Lance une conversation avec Lia pour créer ta première veille.
-          </p>
-        </div>
+        <Reveal delay={0.1}>
+          <div className="glass mt-10 rounded-3xl p-14 text-center">
+            <div className="text-4xl">🧊</div>
+            <p className="font-display mt-4 font-medium text-white">
+              Aucune veille active pour l&apos;instant
+            </p>
+            <p className="mt-2 text-sm text-slate-500">
+              Lance une conversation avec Lia — la première se monte en 5 minutes.
+            </p>
+          </div>
+        </Reveal>
       ) : (
-        <div className="mt-8 space-y-4">
+        <Stagger className="mt-10 space-y-4" gap={0.1}>
           {subscriptions.map((sub) => (
-            <SubscriptionCard key={sub.id} subscription={sub} />
+            <StaggerItem key={sub.id}>
+              <SubscriptionCard subscription={sub} />
+            </StaggerItem>
           ))}
-        </div>
+        </Stagger>
       )}
-
-      <p className="mt-10 text-xs text-slate-600">
-        Astuce : pour tester un envoi immédiatement, ouvre le workflow « Veille Engine » dans n8n et
-        exécute-le avec l&apos;id de ta veille.
-      </p>
     </main>
   );
 }

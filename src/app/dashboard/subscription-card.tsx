@@ -56,28 +56,33 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
     .slice(0, 3);
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+    <div className="glass glass-hover rounded-3xl p-6">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="font-medium text-white">
-            {subscription.channel === "slack" ? "💬" : "📧"} {subscription.name}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <p className="font-display truncate text-lg font-semibold tracking-tight text-white">
+              {subscription.channel === "slack" ? "💬" : "📧"} {subscription.name}
+            </p>
             <span
               className={
                 paused
-                  ? "ml-2 rounded-full bg-amber-950 px-2 py-0.5 text-xs text-amber-400"
-                  : "ml-2 rounded-full bg-emerald-950 px-2 py-0.5 text-xs text-emerald-400"
+                  ? "rounded-full border border-amber-400/20 bg-amber-400/10 px-2.5 py-0.5 text-[11px] font-medium text-amber-300"
+                  : "rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300"
               }
             >
-              {paused ? "En pause" : "Active"}
+              {paused ? "En pause" : "● Active"}
             </span>
-          </p>
-          <p className="mt-1 text-sm text-slate-400">
-            → {subscription.destination} · cron <code>{subscription.frequency_cron}</code> ·{" "}
-            {subscription.sources?.length ?? 0} source(s)
+          </div>
+          <p className="mt-2 truncate text-sm text-slate-400">
+            → {subscription.destination} ·{" "}
+            <code className="rounded bg-white/5 px-1.5 py-0.5 text-xs text-ice">
+              {subscription.frequency_cron}
+            </code>{" "}
+            · {subscription.sources?.length ?? 0} source{(subscription.sources?.length ?? 0) > 1 ? "s" : ""}
           </p>
           {lastDeliveries.length > 0 && (
-            <p className="mt-2 text-xs text-slate-500">
-              Derniers envois :{" "}
+            <p className="mt-3 text-xs text-slate-500">
+              Derniers envois ·{" "}
               {lastDeliveries
                 .map(
                   (d) =>
@@ -91,20 +96,20 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
           <button
             onClick={() => act(paused ? "resume" : "pause")}
             disabled={busy}
-            className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:border-slate-500 disabled:opacity-40"
+            className="rounded-xl border border-white/10 px-3.5 py-2 text-xs text-slate-300 transition-colors hover:border-accent/40 hover:text-white disabled:opacity-40"
           >
             {paused ? "▶ Reprendre" : "⏸ Pause"}
           </button>
           <button
             onClick={() => act("delete")}
             disabled={busy}
-            className="rounded-lg border border-red-900 px-3 py-1.5 text-xs text-red-400 hover:border-red-700 disabled:opacity-40"
+            className="rounded-xl border border-red-500/20 px-3.5 py-2 text-xs text-red-400/80 transition-colors hover:border-red-500/50 hover:text-red-300 disabled:opacity-40"
           >
             Supprimer
           </button>
         </div>
       </div>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
     </div>
   );
 }
