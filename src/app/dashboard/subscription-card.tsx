@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ENGINE_RUN_COST_USD, formatUsd, runsPerWeek } from "@/lib/pricing";
 
 /**
  * One digest card: status, schedule, last 3 deliveries,
@@ -64,6 +66,8 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
     .sort((a, b) => +new Date(b.sent_at) - +new Date(a.sent_at))
     .slice(0, 3);
 
+  const weeklyCost = runsPerWeek(subscription.frequency_cron) * ENGINE_RUN_COST_USD;
+
   return (
     <div className="glass glass-hover rounded-3xl p-6">
       <div className="flex items-start justify-between gap-4">
@@ -90,7 +94,8 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
             <code className="rounded bg-white/5 px-1.5 py-0.5 text-xs text-ice">
               {subscription.frequency_cron}
             </code>{" "}
-            · {subscription.sources?.length ?? 0} source{(subscription.sources?.length ?? 0) > 1 ? "s" : ""}
+            · {subscription.sources?.length ?? 0} source{(subscription.sources?.length ?? 0) > 1 ? "s" : ""} ·{" "}
+            <span className="text-slate-300">~{formatUsd(weeklyCost)}/week</span>
           </p>
           {lastDeliveries.length > 0 && (
             <p className="mt-3 text-xs text-slate-500">
@@ -105,6 +110,12 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
           )}
         </div>
         <div className="flex shrink-0 gap-2">
+          <Link
+            href={`/onboarding?edit=${subscription.id}`}
+            className="rounded-xl border border-accent/30 bg-accent/10 px-3.5 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
+          >
+            Edit
+          </Link>
           <button
             onClick={() => act(paused ? "resume" : "pause")}
             disabled={busy}

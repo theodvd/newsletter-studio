@@ -98,6 +98,22 @@ export async function createUserWorkflow(opts: {
   return created.id;
 }
 
+/** Met à jour le workflow fin d'une veille active (nom, cron) puis le réactive. */
+export async function updateUserWorkflow(
+  workflowId: string,
+  opts: { name: string; cron: string; subscriptionId: string }
+): Promise<void> {
+  await n8nFetch(`/workflows/${workflowId}`, {
+    method: "PUT",
+    body: JSON.stringify(thinWorkflow(opts)),
+  });
+  try {
+    await n8nFetch(`/workflows/${workflowId}/activate`, { method: "POST" });
+  } catch {
+    // Déjà actif : l'API peut refuser, sans conséquence
+  }
+}
+
 export async function setWorkflowActive(workflowId: string, active: boolean): Promise<void> {
   await n8nFetch(`/workflows/${workflowId}/${active ? "activate" : "deactivate"}`, {
     method: "POST",

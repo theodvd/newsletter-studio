@@ -5,6 +5,7 @@ import { LIA_SYSTEM_PROMPT } from "@/lib/agent/system-prompt";
 import { exaSearch, exaFindSimilar } from "@/lib/tools/exa";
 import { validateSource } from "@/lib/tools/validate-source";
 import { encryptSecret } from "@/lib/crypto";
+import { updateUserWorkflow } from "@/lib/n8n";
 
 export const maxDuration = 120;
 
@@ -116,13 +117,18 @@ async function saveConfig(userId: string, input: SaveConfigInput) {
   };
 
   let subscriptionId = input.subscription_id;
+  let workflowSynced = false;
   if (subscriptionId) {
-    // Ne jamais écraser un webhook Slack déjà connecté par une valeur vide
     const { data: existing } = await supabase
       .from("subscriptions")
-      .select("destination")
+      .select("destination, status, n8n_workflow_id")
       .eq("id", subscriptionId)
       .maybeSingle();
+    // Une veille active reste active : on édite en direct, pas de retour en draft
+    if (existing && existing.status !== "draft") {
+      delete row.status;
+    }
+    // Ne jamais écraser un webhook Slack déjà connecté par une valeur vide
     if (
       existing?.destination?.startsWith("https://hooks.slack.com") &&
       !String(input.destination || "").startsWith("https://hooks.slack.com")
@@ -131,6 +137,24 @@ async function saveConfig(userId: string, input: SaveConfigInput) {
     }
     const { error } = await supabase.from("subscriptions").update(row).eq("id", subscriptionId);
     if (error) throw new Error(error.message);
+
+    // Veille en ligne : synchronise le workflow fin n8n (nom + cron)
+    if (existing?.n8n_workflow_id) {
+      try {
+        await updateUserWorkflow(existing.n8n_workflow_id, {
+          name: input.name,
+          cron: input.frequency_cron,
+          subscriptionId,
+        });
+        workflowSynced = true;
+      } catch (e) {
+        return {
+          subscription_id: subscriptionId,
+          saved: true,
+          warning: `Config saved, but the n8n schedule could not be updated: ${e instanceof Error ? e.message : "unknown error"}`,
+        };
+      }
+    }
   } else {
     const { data, error } = await supabase.from("subscriptions").insert(row).select("id").single();
     if (error) throw new Error(error.message);
@@ -154,7 +178,7 @@ async function saveConfig(userId: string, input: SaveConfigInput) {
     );
     if (error) throw new Error(error.message);
   }
-  return { subscription_id: subscriptionId, saved: true };
+  return { subscription_id: subscriptionId, saved: true, workflow_schedule_synced: workflowSynced };
 }
 
 async function runTool(name: string, input: Record<string, unknown>, userId: string): Promise<unknown> {
@@ -181,6 +205,32 @@ export async function POST(request: Request) {
 
   const { messages, subscriptionId: knownSubscriptionId } = await request.json();
 
+  // Contexte de la config existante (mode édition d'une veille active comprise)
+  let configContext = "";
+  if (knownSubscriptionId) {
+    const { data: current } = await supabase
+      .from("subscriptions")
+      .select(
+        "id, name, status, channel, destination, destination_label, frequency_cron, tone, language, profile_prompt, sources(url, feed_url, title, type, validation_status, added_by)"
+      )
+      .eq("id", knownSubscriptionId)
+      .maybeSingle();
+    if (current) {
+      const masked = {
+        ...current,
+        destination: current.destination?.startsWith("https://hooks.slack.com")
+          ? "(slack webhook connected)"
+          : current.destination,
+      };
+      configContext =
+        `\n\nConfiguration actuelle de la veille (status: ${current.status}` +
+        (current.status === "active"
+          ? " — VEILLE EN LIGNE en cours d'édition : chaque save_subscription_config s'applique IMMÉDIATEMENT, y compris la mise à jour du cron n8n. Confirme clairement chaque changement appliqué."
+          : "") +
+        `) :\n${JSON.stringify(masked)}`;
+    }
+  }
+
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const conversation: Anthropic.MessageParam[] = [...messages];
   let subscriptionId: string | null = knownSubscriptionId ?? null;
@@ -195,7 +245,8 @@ export async function POST(request: Request) {
       max_tokens: 2000,
       system:
         LIA_SYSTEM_PROMPT +
-        (subscriptionId ? `\n\nBrouillon en cours : subscription_id=${subscriptionId} (à passer à save_subscription_config pour les mises à jour).` : ""),
+        (subscriptionId ? `\n\nConfig en cours : subscription_id=${subscriptionId} (à passer à save_subscription_config pour les mises à jour).` : "") +
+        configContext,
       tools: TOOLS,
       messages: conversation,
     });

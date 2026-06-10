@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -66,7 +66,20 @@ const markdownComponents = {
 };
 
 export default function OnboardingPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([{ role: "assistant", content: WELCOME }]);
+  // useSearchParams impose une frontière Suspense au prerender
+  return (
+    <Suspense>
+      <Onboarding />
+    </Suspense>
+  );
+}
+
+function Onboarding() {
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("edit");
+  const [messages, setMessages] = useState<ChatMessage[]>(
+    editId ? [] : [{ role: "assistant", content: WELCOME }]
+  );
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -93,18 +106,29 @@ export default function OnboardingPage() {
     }
   }, [messages, loading]);
 
-  // Restore the latest draft (lets you relaunch after a refresh)
+  // Restore the latest draft, or load the digest being edited (?edit=<id>)
   useEffect(() => {
-    fetch("/api/draft")
+    fetch(`/api/draft${editId ? `?id=${editId}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.draft) {
           setDraft(data.draft);
           setSubscriptionId(data.draft.id);
+          if (editId) {
+            setMessages([
+              {
+                role: "assistant",
+                content: `You're editing **${data.draft.name}**${data.draft.status === "active" ? ", which is currently live" : ""}.\n\nTell me what you'd like to change — add or remove sources, adjust the schedule, the tone, or the focus — and I'll apply it right away.`,
+              },
+            ]);
+          }
+        } else if (editId) {
+          setMessages([{ role: "assistant", content: WELCOME }]);
         }
       })
       .catch(() => {});
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editId]);
 
   // Auto-grow textarea (capped), keeps the full text visible while typing
   const autosize = useCallback(() => {
@@ -363,7 +387,25 @@ export default function OnboardingPage() {
         </div>
 
         <AnimatePresence>
-          {draft && (
+          {draft && draft.status === "active" ? (
+            <motion.div
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease }}
+              className="glass rounded-2xl p-4 text-center"
+            >
+              <p className="text-xs leading-relaxed text-slate-400">
+                This digest is live — changes apply immediately as you chat.
+              </p>
+              <a
+                href="/dashboard"
+                className="mt-3 inline-block rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-200 transition-colors hover:border-accent/40"
+              >
+                Back to dashboard
+              </a>
+            </motion.div>
+          ) : draft ? (
             <motion.button
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
@@ -380,7 +422,7 @@ export default function OnboardingPage() {
             >
               {provisioning ? "Creating your workflow…" : "Launch my digest"}
             </motion.button>
-          )}
+          ) : null}
         </AnimatePresence>
       </aside>
     </main>
