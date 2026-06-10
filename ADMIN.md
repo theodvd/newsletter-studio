@@ -10,11 +10,16 @@ Tout ce que tu peux modifier toi-même, sans toucher au code.
 | **Workflows** (moteur, workflows par user, credentials) | https://n8n.exemple.com |
 | **Observabilité** (traces des générations Claude) | https://langfuse.exemple.com (traces `veille-engine`) |
 
-## 👥 Gérer qui peut se connecter à l'app
+## 👥 Accès à l'app
 
-Supabase → Table Editor → table **`allowed_emails`** → *Insert row* avec l'email à autoriser
-(ou supprimer la ligne pour retirer l'accès). C'est tout — la personne pourra ensuite
-se connecter par magic link.
+**Inscription ouverte** : n'importe qui peut créer son compte par magic link, le profil
+est créé automatiquement. La table `allowed_emails` n'est plus contrôlée (conservée au
+cas où tu voudrais réactiver une liste blanche : il suffit de remettre le contrôle dans
+`src/app/auth/callback/route.ts`).
+
+⚠️ Qui dit inscription ouverte dit coûts ouverts (appels Claude/Exa à l'onboarding,
+emails) : ne partage l'URL qu'aux personnes concernées, et surveille les rate limits
+dans Supabase → Auth → Rate Limits si l'usage grossit.
 
 ## 📬 Modifier une veille existante
 

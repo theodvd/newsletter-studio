@@ -5,9 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 /**
- * Page de connexion : magic link par email.
- * La liste blanche (allowed_emails) est vérifiée après le clic sur le lien,
- * dans /auth/callback — un email hors liste est déconnecté immédiatement.
+ * Page de connexion : magic link par email, inscription ouverte
+ * (le compte est créé automatiquement au premier lien cliqué).
  */
 export default function LoginPage() {
   // useSearchParams impose une frontière Suspense au prerender
@@ -22,7 +21,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const searchParams = useSearchParams();
-  const unauthorized = searchParams.get("error") === "unauthorized";
+  const authFailed = searchParams.get("error") === "auth";
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,12 +41,14 @@ function LoginForm() {
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900 p-8">
         <h1 className="text-2xl font-semibold text-white">Newsletter Studio</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Crée ta veille personnalisée avec Lia. Connexion réservée à l&apos;équipe.
+          Crée ta veille personnalisée avec Lia. Entre ton email pour te connecter
+          ou créer ton compte.
         </p>
 
-        {unauthorized && (
+        {authFailed && (
           <p className="mt-4 rounded-lg bg-red-950 p-3 text-sm text-red-300">
-            Cet email n&apos;est pas autorisé. Contacte Theo pour être ajouté.
+            Le lien a expiré ou a été ouvert dans un autre navigateur. Redemande un
+            lien et ouvre-le dans ce navigateur.
           </p>
         )}
 

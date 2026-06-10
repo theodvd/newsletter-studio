@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Callback du magic link : échange le code contre une session,
- * puis vérifie la liste blanche (allowed_emails).
- * Un email non autorisé est déconnecté et renvoyé vers /login.
+ * Callback du magic link : échange le code contre une session.
+ * Inscription ouverte — toute personne avec un email valide peut créer son compte
+ * (le profil est créé automatiquement par le trigger handle_new_user).
  */
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
@@ -12,20 +12,8 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = createClient();
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-
-    if (!error && data.user?.email) {
-      // RLS : un utilisateur authentifié ne peut lire que sa propre entrée
-      const { data: allowed } = await supabase
-        .from("allowed_emails")
-        .select("email")
-        .eq("email", data.user.email)
-        .maybeSingle();
-
-      if (!allowed) {
-        await supabase.auth.signOut();
-        return NextResponse.redirect(`${origin}/login?error=unauthorized`);
-      }
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) {
       return NextResponse.redirect(`${origin}/`);
     }
   }
