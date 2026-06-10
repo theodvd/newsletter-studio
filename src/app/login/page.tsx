@@ -2,12 +2,9 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
-
-// Scène 3D (Three.js) chargée côté client uniquement, après le contenu
-const IceScene = dynamic(() => import("@/components/ice-scene"), { ssr: false });
+import { CrystalBackdrop } from "@/components/crystal-backdrop";
 
 /**
  * Page de connexion : magic link par email, inscription ouverte
@@ -46,15 +43,7 @@ function LoginForm() {
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center px-4">
       {/* Cristal de glace 3D — derrière le contenu, suit la souris */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 2, delay: 0.3 }}
-        className="pointer-events-none fixed inset-0 z-0"
-        aria-hidden
-      >
-        <IceScene />
-      </motion.div>
+      <CrystalBackdrop />
 
       <motion.div
         initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}

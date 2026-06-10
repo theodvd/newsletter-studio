@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { Reveal, Stagger, StaggerItem } from "@/components/reveal";
+import { CrystalBackdrop } from "@/components/crystal-backdrop";
 
 /**
  * Accueil : hero typographique + 2 actions (nouvelle veille / mes veilles).
@@ -21,7 +22,10 @@ export default async function HomePage() {
     user?.email?.split("@")[0]?.split(".")[0]?.replace(/^./, (c) => c.toUpperCase()) ?? "";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col justify-center px-6 pb-24 pt-32">
+    <main className="relative mx-auto flex min-h-screen max-w-4xl flex-col justify-center px-6 pb-24 pt-32">
+      {/* Cristal 3D décalé à droite pour équilibrer le hero */}
+      <CrystalBackdrop align="right" />
+      <div className="relative z-10">
       <Reveal>
         <p className="font-display text-sm uppercase tracking-[0.3em] text-accent/80">
           Newsletter Studio
@@ -76,6 +80,7 @@ export default async function HomePage() {
           </Link>
         </StaggerItem>
       </Stagger>
+      </div>
     </main>
   );
 }
