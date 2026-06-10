@@ -9,9 +9,9 @@ import { createClient } from "@/lib/supabase/client";
  * Rendue uniquement quand une session existe (voir layout).
  */
 const LINKS = [
-  { href: "/", label: "Accueil" },
-  { href: "/onboarding", label: "Nouvelle veille" },
-  { href: "/dashboard", label: "Mes veilles" },
+  { href: "/", label: "Home" },
+  { href: "/onboarding", label: "New digest" },
+  { href: "/dashboard", label: "My digests" },
 ];
 
 export function Nav() {
@@ -49,7 +49,7 @@ export function Nav() {
             onClick={signOut}
             className="ml-2 rounded-lg px-3 py-1.5 text-sm text-slate-500 transition-colors hover:bg-white/5 hover:text-slate-200"
           >
-            Déconnexion
+            Sign out
           </button>
         </div>
       </nav>

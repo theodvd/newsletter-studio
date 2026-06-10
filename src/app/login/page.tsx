@@ -52,15 +52,15 @@ function LoginForm() {
         className="relative z-10 text-center"
       >
         <p className="font-display text-xs uppercase tracking-[0.4em] text-accent/70">
-          Propulsé par Lia
+          Powered by Lia
         </p>
         <h1 className="font-display mt-5 text-5xl font-semibold tracking-tight sm:text-7xl">
           <span className="text-ice">Newsletter</span>{" "}
           <span className="text-slate-500">Studio</span>
         </h1>
         <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-slate-400">
-          La veille qui te ressemble : décris ton métier, Lia s&apos;occupe des sources,
-          tu reçois l&apos;essentiel — sur Slack ou par email.
+          The briefing that fits you: describe what you do, Lia handles the sources,
+          and the essentials reach you — on Slack or by email.
         </p>
       </motion.div>
 
@@ -72,8 +72,8 @@ function LoginForm() {
       >
         {authFailed && (
           <p className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
-            Le lien a expiré ou a été ouvert dans un autre navigateur. Redemande un lien
-            et ouvre-le dans ce navigateur.
+            That link expired or was opened in a different browser. Request a new one
+            and open it in this browser.
           </p>
         )}
 
@@ -84,23 +84,21 @@ function LoginForm() {
             transition={{ duration: 0.5, ease }}
             className="py-4 text-center"
           >
-            <div className="text-3xl">📬</div>
-            <p className="font-display mt-3 font-medium text-white">Lien envoyé !</p>
+            <p className="font-display font-medium text-white">Link sent</p>
             <p className="mt-2 text-sm leading-relaxed text-slate-400">
-              Vérifie ta boîte mail et ouvre le lien <strong>dans ce navigateur</strong>{" "}
-              pour te connecter.
+              Check your inbox and open the link <strong>in this browser</strong> to sign in.
             </p>
           </motion.div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <label className="block text-xs font-medium uppercase tracking-widest text-slate-500">
-              Ton email
+              Your email
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="prenom@entreprise.com"
+                placeholder="you@company.com"
                 className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base font-normal normal-case tracking-normal text-white placeholder-slate-600 outline-none transition-colors focus:border-accent/60 focus:bg-white/[0.07]"
               />
             </label>
@@ -109,10 +107,10 @@ function LoginForm() {
               disabled={status === "sending"}
               className="w-full rounded-xl bg-gradient-to-r from-sky-400/90 to-cyan-300/90 px-4 py-3 font-display font-semibold tracking-tight text-slate-950 transition-all duration-300 hover:shadow-[0_0_30px_rgba(124,198,255,0.35)] disabled:opacity-50"
             >
-              {status === "sending" ? "Envoi…" : "Recevoir mon lien de connexion"}
+              {status === "sending" ? "Sending…" : "Send me a sign-in link"}
             </button>
             {status === "error" && (
-              <p className="text-sm text-red-400">Erreur d&apos;envoi, réessaie.</p>
+              <p className="text-sm text-red-400">Could not send the link — try again.</p>
             )}
           </form>
         )}
@@ -124,7 +122,7 @@ function LoginForm() {
         transition={{ duration: 1, delay: 0.6 }}
         className="relative z-10 mt-10 text-xs text-slate-600"
       >
-        Pas de mot de passe — un lien magique, c&apos;est tout.
+        No password — just a magic link. You&apos;ll stay signed in.
       </motion.p>
     </main>
   );

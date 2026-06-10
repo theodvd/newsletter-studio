@@ -20,7 +20,7 @@ const spaceGrotesk = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: "Newsletter Studio — Lia",
-  description: "Ta veille sur mesure, conçue en discutant avec Lia",
+  description: "Your tailored briefing, designed in one conversation with Lia",
 };
 
 export default async function RootLayout({

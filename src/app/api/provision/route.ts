@@ -25,21 +25,21 @@ export async function POST(request: Request) {
     .eq("id", subscriptionId)
     .maybeSingle();
 
-  if (error || !sub) return NextResponse.json({ error: "Veille introuvable" }, { status: 404 });
+  if (error || !sub) return NextResponse.json({ error: "Digest not found" }, { status: 404 });
   if (sub.channel === "slack" && !sub.destination?.startsWith("https://hooks.slack.com")) {
     return NextResponse.json(
-      { error: "Connecte d'abord ton Slack (bouton « Connecter Slack » dans le récap)." },
+      { error: "Connect your Slack first (button in the summary panel)." },
       { status: 400 }
     );
   }
   if (sub.channel === "email" && !sub.destination) {
-    return NextResponse.json({ error: "Adresse email destinataire manquante." }, { status: 400 });
+    return NextResponse.json({ error: "Missing recipient email address." }, { status: 400 });
   }
   if (!sub.sources?.length) {
-    return NextResponse.json({ error: "Aucune source configurée : complète la conversation avec Lia." }, { status: 400 });
+    return NextResponse.json({ error: "No sources configured yet — finish the conversation with Lia." }, { status: 400 });
   }
   if (sub.n8n_workflow_id) {
-    return NextResponse.json({ error: "Cette veille a déjà un workflow.", workflowId: sub.n8n_workflow_id }, { status: 409 });
+    return NextResponse.json({ error: "This digest already has a workflow.", workflowId: sub.n8n_workflow_id }, { status: 409 });
   }
 
   try {

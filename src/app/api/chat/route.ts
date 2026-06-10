@@ -185,6 +185,8 @@ export async function POST(request: Request) {
   const conversation: Anthropic.MessageParam[] = [...messages];
   let subscriptionId: string | null = knownSubscriptionId ?? null;
   let finalText = "";
+  // Cumul des tokens du tour (toutes itérations de tools incluses) pour l'affichage du coût
+  const usage = { input_tokens: 0, output_tokens: 0 };
 
   // Boucle agentique : max 10 itérations de tools par tour
   for (let i = 0; i < 10; i++) {
@@ -197,6 +199,9 @@ export async function POST(request: Request) {
       tools: TOOLS,
       messages: conversation,
     });
+
+    usage.input_tokens += response.usage?.input_tokens ?? 0;
+    usage.output_tokens += response.usage?.output_tokens ?? 0;
 
     const toolUses = response.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
@@ -236,5 +241,5 @@ export async function POST(request: Request) {
     draft = data;
   }
 
-  return NextResponse.json({ reply: finalText, subscriptionId, draft });
+  return NextResponse.json({ reply: finalText, subscriptionId, draft, usage });
 }

@@ -4,8 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 /**
- * Carte d'une veille : statut, infos, historique des 3 derniers envois,
- * actions pause/reprendre/supprimer (synchronisées avec n8n).
+ * One digest card: status, schedule, last 3 deliveries,
+ * pause/resume/delete actions (kept in sync with n8n).
  */
 
 type Delivery = { id: string; sent_at: string; status: string };
@@ -14,7 +14,8 @@ type Subscription = {
   id: string;
   name: string;
   channel: string;
-  destination: string;
+  destination: string | null;
+  destination_label: string | null;
   frequency_cron: string;
   status: string;
   n8n_workflow_id: string | null;
@@ -30,7 +31,10 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
 
   async function act(action: "pause" | "resume" | "delete") {
     if (busy) return;
-    if (action === "delete" && !confirm(`Supprimer la veille « ${subscription.name} » et son workflow n8n ?`)) {
+    if (
+      action === "delete" &&
+      !confirm(`Delete "${subscription.name}" and its n8n workflow? This cannot be undone.`)
+    ) {
       return;
     }
     setBusy(true);
@@ -42,14 +46,19 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
         body: action === "delete" ? undefined : JSON.stringify({ action }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       router.refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Erreur");
+      setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setBusy(false);
     }
   }
+
+  const destinationLabel =
+    subscription.channel === "slack"
+      ? subscription.destination_label || "Slack"
+      : subscription.destination;
 
   const lastDeliveries = [...(subscription.deliveries || [])]
     .sort((a, b) => +new Date(b.sent_at) - +new Date(a.sent_at))
@@ -61,8 +70,11 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <p className="font-display truncate text-lg font-semibold tracking-tight text-white">
-              {subscription.channel === "slack" ? "💬" : "📧"} {subscription.name}
+              {subscription.name}
             </p>
+            <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] font-medium text-slate-300">
+              {subscription.channel === "slack" ? "Slack" : "Email"}
+            </span>
             <span
               className={
                 paused
@@ -70,11 +82,11 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
                   : "rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-0.5 text-[11px] font-medium text-emerald-300"
               }
             >
-              {paused ? "En pause" : "● Active"}
+              {paused ? "Paused" : "Active"}
             </span>
           </div>
           <p className="mt-2 truncate text-sm text-slate-400">
-            → {subscription.destination} ·{" "}
+            {destinationLabel} ·{" "}
             <code className="rounded bg-white/5 px-1.5 py-0.5 text-xs text-ice">
               {subscription.frequency_cron}
             </code>{" "}
@@ -82,11 +94,11 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
           </p>
           {lastDeliveries.length > 0 && (
             <p className="mt-3 text-xs text-slate-500">
-              Derniers envois ·{" "}
+              Recent deliveries ·{" "}
               {lastDeliveries
                 .map(
                   (d) =>
-                    `${new Date(d.sent_at).toLocaleDateString("fr-FR")} ${d.status === "success" ? "✅" : "❌"}`
+                    `${new Date(d.sent_at).toLocaleDateString("en-GB")} ${d.status === "success" ? "ok" : "failed"}`
                 )
                 .join(" · ")}
             </p>
@@ -98,14 +110,14 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
             disabled={busy}
             className="rounded-xl border border-white/10 px-3.5 py-2 text-xs text-slate-300 transition-colors hover:border-accent/40 hover:text-white disabled:opacity-40"
           >
-            {paused ? "▶ Reprendre" : "⏸ Pause"}
+            {paused ? "Resume" : "Pause"}
           </button>
           <button
             onClick={() => act("delete")}
             disabled={busy}
             className="rounded-xl border border-red-500/20 px-3.5 py-2 text-xs text-red-400/80 transition-colors hover:border-red-500/50 hover:text-red-300 disabled:opacity-40"
           >
-            Supprimer
+            Delete
           </button>
         </div>
       </div>
