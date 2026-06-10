@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="32%" r="85%">
+      <stop offset="0%" stop-color="#0c1828"/>
+      <stop offset="60%" stop-color="#060b14"/>
+      <stop offset="100%" stop-color="#03060c"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="48%" r="42%">
+      <stop offset="0%" stop-color="#7cc6ff" stop-opacity="0.38"/>
+      <stop offset="70%" stop-color="#7cc6ff" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#7cc6ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="facetTL" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f2faff"/>
+      <stop offset="100%" stop-color="#bfe3ff"/>
+    </linearGradient>
+    <linearGradient id="facetTR" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a8d8ff"/>
+      <stop offset="100%" stop-color="#6fb4ec"/>
+    </linearGradient>
+    <linearGradient id="facetBL" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#7cc6ff"/>
+      <stop offset="100%" stop-color="#4a90d4"/>
+    </linearGradient>
+    <linearGradient id="facetBR" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#4a90d4"/>
+      <stop offset="100%" stop-color="#2a5e9c"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Fond nuit -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- Halo derrière le cristal -->
+  <rect width="512" height="512" fill="url(#glow)"/>
+
+  <!-- Cristal facetté (T=sommet, L/R=ceinture, B=culasse, C=cœur) -->
+  <g stroke="#eaf6ff" stroke-opacity="0.35" stroke-width="2" stroke-linejoin="round">
+    <polygon points="256,92 122,238 256,268" fill="url(#facetTL)"/>
+    <polygon points="256,92 390,238 256,268" fill="url(#facetTR)"/>
+    <polygon points="122,238 256,430 256,268" fill="url(#facetBL)"/>
+    <polygon points="390,238 256,430 256,268" fill="url(#facetBR)"/>
+  </g>
+
+  <!-- Reflet du sommet -->
+  <polygon points="256,92 196,158 256,150" fill="#ffffff" opacity="0.55"/>
+
+  <!-- Poussière de glace -->
+  <g fill="#dff1ff">
+    <path d="M404 120 l5 14 14 5 -14 5 -5 14 -5 -14 -14 -5 14 -5 z" opacity="0.9"/>
+    <path d="M112 368 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4 z" opacity="0.7"/>
+    <circle cx="142" cy="128" r="4" opacity="0.5"/>
+    <circle cx="396" cy="332" r="5" opacity="0.45"/>
+    <circle cx="338" cy="84" r="3" opacity="0.4"/>
+  </g>
+</svg>
