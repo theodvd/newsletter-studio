@@ -16,7 +16,7 @@ export async function GET() {
   const { data: draft } = await supabase
     .from("subscriptions")
     .select(
-      "id, name, channel, destination, frequency_cron, tone, language, status, sources(url, feed_url, title, type, validation_status, added_by)"
+      "id, name, channel, destination, destination_label, frequency_cron, tone, language, status, sources(url, feed_url, title, type, validation_status, added_by)"
     )
     .eq("status", "draft")
     .order("updated_at", { ascending: false })

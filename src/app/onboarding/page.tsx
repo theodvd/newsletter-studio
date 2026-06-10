@@ -26,13 +26,19 @@ type Draft = {
   id: string;
   name: string;
   channel: string;
-  destination: string;
+  destination: string | null;
+  destination_label: string | null;
   frequency_cron: string;
   tone: string | null;
   language: string;
   status: string;
   sources: DraftSource[];
 };
+
+/** Webhook Slack connecté via OAuth ? */
+function slackConnected(d: Draft) {
+  return d.destination?.startsWith("https://hooks.slack.com") ?? false;
+}
 
 const WELCOME =
   "Salut, moi c'est Lia 👋 Je vais t'aider à monter ta veille sur mesure.\n\nPour commencer : c'est quoi ton rôle, et qu'est-ce que tu aimerais suivre au quotidien ?";
@@ -214,10 +220,25 @@ export default function OnboardingPage() {
                 {draft.name}
               </p>
               <div className="space-y-1.5 text-slate-400">
-                <p>
-                  {draft.channel === "slack" ? "💬 Slack" : "📧 Email"}{" "}
-                  <span className="text-slate-300">→ {draft.destination}</span>
-                </p>
+                {draft.channel === "email" ? (
+                  <p>
+                    📧 Email <span className="text-slate-300">→ {draft.destination}</span>
+                  </p>
+                ) : slackConnected(draft) ? (
+                  <p>
+                    💬 Slack{" "}
+                    <span className="text-emerald-300">
+                      ✓ {draft.destination_label || "connecté"}
+                    </span>
+                  </p>
+                ) : (
+                  <a
+                    href={`/api/slack/install?subscription=${draft.id}`}
+                    className="inline-flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/10 px-3 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent/20"
+                  >
+                    🔗 Connecter Slack
+                  </a>
+                )}
                 <p>
                   ⏰ <code className="rounded bg-white/5 px-1.5 py-0.5 text-xs text-ice">{draft.frequency_cron}</code>
                 </p>
@@ -259,7 +280,12 @@ export default function OnboardingPage() {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.5, ease }}
               onClick={provision}
-              disabled={provisioning}
+              disabled={provisioning || (draft.channel === "slack" && !slackConnected(draft))}
+              title={
+                draft.channel === "slack" && !slackConnected(draft)
+                  ? "Connecte d'abord ton Slack via le bouton du récap"
+                  : undefined
+              }
               className="rounded-2xl bg-gradient-to-r from-emerald-400/90 to-teal-300/90 px-5 py-4 font-display font-semibold tracking-tight text-slate-950 transition-all duration-300 hover:shadow-[0_0_30px_rgba(52,211,153,0.3)] disabled:opacity-50"
             >
               {provisioning ? "Création du workflow…" : "🚀 Valider et lancer ma veille"}

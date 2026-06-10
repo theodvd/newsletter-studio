@@ -21,11 +21,20 @@ export async function POST(request: Request) {
   // RLS : ne renvoie la subscription que si elle appartient au user
   const { data: sub, error } = await supabase
     .from("subscriptions")
-    .select("id, name, frequency_cron, status, n8n_workflow_id, sources(id)")
+    .select("id, name, frequency_cron, status, n8n_workflow_id, channel, destination, sources(id)")
     .eq("id", subscriptionId)
     .maybeSingle();
 
   if (error || !sub) return NextResponse.json({ error: "Veille introuvable" }, { status: 404 });
+  if (sub.channel === "slack" && !sub.destination?.startsWith("https://hooks.slack.com")) {
+    return NextResponse.json(
+      { error: "Connecte d'abord ton Slack (bouton « Connecter Slack » dans le récap)." },
+      { status: 400 }
+    );
+  }
+  if (sub.channel === "email" && !sub.destination) {
+    return NextResponse.json({ error: "Adresse email destinataire manquante." }, { status: 400 });
+  }
   if (!sub.sources?.length) {
     return NextResponse.json({ error: "Aucune source configurée : complète la conversation avec Lia." }, { status: 400 });
   }

@@ -56,7 +56,7 @@ const TOOLS: Anthropic.Tool[] = [
         profile_prompt: { type: "string", description: "Résumé riche du profil et des besoins (sert à personnaliser chaque édition)" },
         frequency_cron: { type: "string", description: "Fréquence en cron 5 champs, ex: '0 7 * * 1-5'" },
         channel: { type: "string", enum: ["slack", "email"] },
-        destination: { type: "string", description: "Channel/DM Slack (#veille-x) ou adresse email" },
+        destination: { type: "string", description: "Adresse email du destinataire (canal email). Pour Slack : LAISSER VIDE — l'utilisateur connectera son workspace via le bouton « Connecter Slack » du récap." },
         tone: { type: "string" },
         language: { type: "string", description: "Code langue, ex: 'fr'" },
         sources: {
@@ -76,7 +76,7 @@ const TOOLS: Anthropic.Tool[] = [
           },
         },
       },
-      required: ["name", "profile_prompt", "frequency_cron", "channel", "destination", "sources"],
+      required: ["name", "profile_prompt", "frequency_cron", "channel", "sources"],
     },
   },
 ];
@@ -87,7 +87,7 @@ type SaveConfigInput = {
   profile_prompt: string;
   frequency_cron: string;
   channel: "slack" | "email";
-  destination: string;
+  destination?: string;
   tone?: string;
   language?: string;
   sources: Array<{
@@ -102,13 +102,13 @@ type SaveConfigInput = {
 
 async function saveConfig(userId: string, input: SaveConfigInput) {
   const supabase = createClient();
-  const row = {
+  const row: Record<string, unknown> = {
     user_id: userId,
     name: input.name,
     profile_prompt: input.profile_prompt,
     frequency_cron: input.frequency_cron,
     channel: input.channel,
-    destination: input.destination,
+    destination: input.destination || null,
     tone: input.tone ?? null,
     language: input.language ?? "fr",
     status: "draft",
@@ -117,6 +117,18 @@ async function saveConfig(userId: string, input: SaveConfigInput) {
 
   let subscriptionId = input.subscription_id;
   if (subscriptionId) {
+    // Ne jamais écraser un webhook Slack déjà connecté par une valeur vide
+    const { data: existing } = await supabase
+      .from("subscriptions")
+      .select("destination")
+      .eq("id", subscriptionId)
+      .maybeSingle();
+    if (
+      existing?.destination?.startsWith("https://hooks.slack.com") &&
+      !String(input.destination || "").startsWith("https://hooks.slack.com")
+    ) {
+      delete row.destination;
+    }
     const { error } = await supabase.from("subscriptions").update(row).eq("id", subscriptionId);
     if (error) throw new Error(error.message);
   } else {
@@ -218,7 +230,7 @@ export async function POST(request: Request) {
   if (subscriptionId) {
     const { data } = await supabase
       .from("subscriptions")
-      .select("id, name, channel, destination, frequency_cron, tone, language, status, sources(url, feed_url, title, type, validation_status, added_by)")
+      .select("id, name, channel, destination, destination_label, frequency_cron, tone, language, status, sources(url, feed_url, title, type, validation_status, added_by)")
       .eq("id", subscriptionId)
       .maybeSingle();
     draft = data;
