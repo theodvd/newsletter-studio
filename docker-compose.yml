@@ -1,5 +1,7 @@
 # ═══════════════════════════════════════════════════════════
-# Newsletter Studio — à déployer sur le serveur, à côté de n8n.
+# Newsletter Studio — déploiement sur le serveur (openclaw).
+# Pas de port hôte : Caddy route news.tiro.agency → conteneur:3000
+# via le réseau docker partagé openclaw_web.
 # Prérequis : un fichier .env rempli (voir .env.example).
 # ═══════════════════════════════════════════════════════════
 services:
@@ -10,7 +12,13 @@ services:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+    container_name: newsletter-studio
     env_file: .env
-    ports:
-      - "3000:3000"
     restart: unless-stopped
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
+    name: openclaw_web
