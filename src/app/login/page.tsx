@@ -2,8 +2,12 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
+
+// Scène 3D (Three.js) chargée côté client uniquement, après le contenu
+const IceScene = dynamic(() => import("@/components/ice-scene"), { ssr: false });
 
 /**
  * Page de connexion : magic link par email, inscription ouverte
@@ -40,12 +44,23 @@ function LoginForm() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-4">
+    <main className="relative flex min-h-screen flex-col items-center justify-center px-4">
+      {/* Cristal de glace 3D — derrière le contenu, suit la souris */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 2, delay: 0.3 }}
+        className="pointer-events-none fixed inset-0 z-0"
+        aria-hidden
+      >
+        <IceScene />
+      </motion.div>
+
       <motion.div
         initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
         transition={{ duration: 0.9, ease }}
-        className="text-center"
+        className="relative z-10 text-center"
       >
         <p className="font-display text-xs uppercase tracking-[0.4em] text-accent/70">
           Propulsé par Lia
@@ -64,7 +79,7 @@ function LoginForm() {
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.9, ease, delay: 0.2 }}
-        className="glass mt-12 w-full max-w-md rounded-3xl p-8"
+        className="glass relative z-10 mt-12 w-full max-w-md rounded-3xl p-8"
       >
         {authFailed && (
           <p className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
@@ -118,7 +133,7 @@ function LoginForm() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 1, delay: 0.6 }}
-        className="mt-10 text-xs text-slate-600"
+        className="relative z-10 mt-10 text-xs text-slate-600"
       >
         Pas de mot de passe — un lien magique, c&apos;est tout.
       </motion.p>
