@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { LIA_SYSTEM_PROMPT } from "@/lib/agent/system-prompt";
 import { exaSearch, exaFindSimilar } from "@/lib/tools/exa";
@@ -7,15 +6,22 @@ import { validateSource } from "@/lib/tools/validate-source";
 import { encryptSecret } from "@/lib/crypto";
 import { updateUserWorkflow } from "@/lib/n8n";
 import { costUsd } from "@/lib/pricing";
-import { MONTHLY_CAP_USD, monthlySpendUsd } from "@/lib/usage";
+import { monthlySpendUsd } from "@/lib/usage";
+import { getUserPlan, PLAN_LIMITS } from "@/lib/plan";
 
 export const maxDuration = 120;
 
 /**
  * Route de l'agent d'onboarding « Lia ».
- * Boucle agentique : Claude répond, appelle ses tools (Exa, validation,
- * sauvegarde du brouillon) côté serveur, jusqu'à une réponse finale.
- * Le client envoie tout l'historique (texte uniquement) à chaque tour.
+ * Boucle agentique : Claude stream ses tokens en SSE, appelle ses tools côté
+ * serveur, jusqu'à une réponse finale. Le client lit les événements au fil de l'eau.
+ *
+ * Événements SSE émis (une ligne "data: {json}\n\n" par événement) :
+ *   { type: "delta", text }            — token de texte
+ *   { type: "status", label }          — tool en cours
+ *   { type: "draft", draft, subscriptionId } — après un save réussi
+ *   { type: "done", subscriptionId, usage } — fin de la réponse
+ *   { type: "error", message }         — erreur fatale
  */
 
 const TOOLS: Anthropic.Tool[] = [
@@ -186,6 +192,28 @@ async function saveConfig(userId: string, userEmail: string, input: SaveConfigIn
   return { subscription_id: subscriptionId, saved: true, workflow_schedule_synced: workflowSynced };
 }
 
+/** Libellé lisible pour la pastille de statut dans le fil de chat. */
+function toolStatusLabel(name: string, input: Record<string, unknown>): string {
+  switch (name) {
+    case "validate_source": {
+      try {
+        const hostname = new URL(String(input.url)).hostname.replace(/^www\./, "");
+        return `Checking ${hostname}…`;
+      } catch {
+        return "Checking source…";
+      }
+    }
+    case "exa_search":
+      return `Searching sources: "${input.query}"…`;
+    case "exa_find_similar":
+      return "Finding similar sources…";
+    case "save_subscription_config":
+      return "Updating your digest…";
+    default:
+      return "Working…";
+  }
+}
+
 async function runTool(
   name: string,
   input: Record<string, unknown>,
@@ -206,21 +234,49 @@ async function runTool(
   }
 }
 
+/** Émet un événement SSE formaté dans le stream (silencieux si le client a coupé). */
+function sseEvent(
+  controller: ReadableStreamDefaultController,
+  payload: Record<string, unknown>
+) {
+  try {
+    const encoder = new TextEncoder();
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+  } catch {
+    // Le client a fermé la connexion (Stop) : on n'interrompt pas la boucle serveur ici,
+    // c'est le check request.signal.aborted qui s'en charge proprement.
+  }
+}
+
 export async function POST(request: Request) {
   const supabase = createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
+  if (!user) {
+    return new Response(
+      `data: ${JSON.stringify({ type: "error", message: "Non authentifié" })}\n\n`,
+      { status: 401, headers: { "Content-Type": "text/event-stream" } }
+    );
+  }
+
+  // Lit le plan et adapte le plafond en conséquence
+  const plan = await getUserPlan(supabase);
+  const limits = PLAN_LIMITS[plan];
 
   // Plafond mensuel : on bloque AVANT d'appeler Claude
   const spend = await monthlySpendUsd(supabase);
-  if (spend >= MONTHLY_CAP_USD) {
-    return NextResponse.json(
-      {
-        error: `You've reached your monthly usage cap ($${MONTHLY_CAP_USD.toFixed(2)}). It resets on the 1st — your running digests keep going until then.`,
-      },
-      { status: 429 }
+  if (spend >= limits.monthlyCapUsd) {
+    const upgradeHint =
+      plan === "free"
+        ? " Upgrade to Pro for a higher limit."
+        : "";
+    return new Response(
+      `data: ${JSON.stringify({
+        type: "error",
+        message: `You've reached your monthly usage cap ($${limits.monthlyCapUsd.toFixed(2)}).${upgradeHint} It resets on the 1st — your running digests keep going until then.`,
+      })}\n\n`,
+      { status: 429, headers: { "Content-Type": "text/event-stream" } }
     );
   }
 
@@ -252,77 +308,209 @@ export async function POST(request: Request) {
     }
   }
 
+  // Section dynamique injectée dans le system prompt : plan + limites
+  const planContext = `\n\n## Plan de l'utilisateur\nPlan actuel : **${limits.label}**\n- Veilles actives max : ${limits.maxActiveDigests}\n- Envois max/semaine : ${limits.maxRunsPerWeek} (${limits.maxRunsPerWeek >= 14 ? "jusqu'à 2/jour" : "1/jour max"})\n- Sources max (quotidien) : ${limits.maxSourcesDaily} | (hebdo/bi-hebdo) : ${limits.maxSourcesWeekly}\n- Profondeur d'analyse : ${limits.depth}\n\nRègle : configure DANS ces limites. Si l'utilisateur demande plus (ex: 3 veilles sur Free, 2x/jour sur Free), propose-lui le plan Pro sans être insistant — une seule mention suffit.`;
+
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const conversation: Anthropic.MessageParam[] = [...messages];
   let subscriptionId: string | null = knownSubscriptionId ?? null;
-  let finalText = "";
-  // Cumul des tokens du tour (toutes itérations de tools incluses) pour l'affichage du coût
+
+  // Cumul des tokens du tour (toutes itérations de tools incluses)
   const usage = { input_tokens: 0, output_tokens: 0 };
 
-  // Boucle agentique : max 10 itérations de tools par tour
-  for (let i = 0; i < 10; i++) {
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 2000,
-      system:
-        LIA_SYSTEM_PROMPT +
-        (subscriptionId ? `\n\nConfig en cours : subscription_id=${subscriptionId} (à passer à save_subscription_config pour les mises à jour).` : "") +
-        configContext,
-      tools: TOOLS,
-      messages: conversation,
-    });
+  const systemPrompt =
+    LIA_SYSTEM_PROMPT +
+    planContext +
+    (subscriptionId ? `\n\nConfig en cours : subscription_id=${subscriptionId} (à passer à save_subscription_config pour les mises à jour).` : "") +
+    configContext;
 
-    usage.input_tokens += response.usage?.input_tokens ?? 0;
-    usage.output_tokens += response.usage?.output_tokens ?? 0;
-
-    const toolUses = response.content.filter(
-      (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
-    );
-    finalText = response.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("\n");
-
-    if (response.stop_reason !== "tool_use" || toolUses.length === 0) break;
-
-    conversation.push({ role: "assistant", content: response.content });
-    const results: Anthropic.ToolResultBlockParam[] = [];
-    for (const tu of toolUses) {
-      let result: unknown;
+  // Le stream SSE est produit par un ReadableStream natif Web
+  const stream = new ReadableStream({
+    async start(controller) {
       try {
-        result = await runTool(tu.name, tu.input as Record<string, unknown>, user.id, user.email ?? "");
-        if (tu.name === "save_subscription_config" && result && typeof result === "object") {
-          subscriptionId = (result as { subscription_id: string }).subscription_id;
+        // Boucle agentique : max 10 itérations de tools par tour
+        for (let i = 0; i < 10; i++) {
+          // L'utilisateur a cliqué Stop : on arrête de consommer des tokens
+          if (request.signal.aborted) break;
+
+          // Accumulateurs pour cette itération
+          let currentText = "";
+          const toolUses: Array<{ id: string; name: string; input: string }> = [];
+          /** Type de chaque content_block par index (pour n'émettre le statut que sur les tool_use) */
+          const blockTypes: Record<number, string> = {};
+          let stopReason: string | null = null;
+
+          // Stream de l'API Anthropic
+          const sdkStream = anthropic.messages.stream({
+            model: "claude-sonnet-4-6",
+            max_tokens: 2000,
+            system: systemPrompt,
+            tools: TOOLS,
+            messages: conversation,
+          });
+
+          for await (const event of sdkStream) {
+            // Tokens de texte : on les forward immédiatement
+            if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "text_delta"
+            ) {
+              const text = event.delta.text;
+              currentText += text;
+              sseEvent(controller, { type: "delta", text });
+            }
+
+            // Début d'un content_block : mémorise son type
+            if (event.type === "content_block_start") {
+              blockTypes[event.index] = event.content_block.type;
+              if (event.content_block.type === "tool_use") {
+                toolUses.push({
+                  id: event.content_block.id,
+                  name: event.content_block.name,
+                  input: "",
+                });
+              }
+            }
+
+            // Accumulation du JSON de l'input du tool
+            if (
+              event.type === "content_block_delta" &&
+              event.delta.type === "input_json_delta"
+            ) {
+              const last = toolUses[toolUses.length - 1];
+              if (last) last.input += event.delta.partial_json;
+            }
+
+            // Fin d'un content_block tool_use (et seulement tool_use) : on émet le statut
+            if (event.type === "content_block_stop" && blockTypes[event.index] === "tool_use") {
+              const last = toolUses[toolUses.length - 1];
+              if (last) {
+                let parsedInput: Record<string, unknown> = {};
+                try { parsedInput = JSON.parse(last.input || "{}"); } catch { /* ignore */ }
+                sseEvent(controller, {
+                  type: "status",
+                  label: toolStatusLabel(last.name, parsedInput),
+                });
+              }
+            }
+
+            // Métriques d'usage
+            if (event.type === "message_delta" && event.usage) {
+              usage.output_tokens += event.usage.output_tokens ?? 0;
+            }
+            if (event.type === "message_start" && event.message.usage) {
+              usage.input_tokens += event.message.usage.input_tokens ?? 0;
+            }
+
+            // Stop reason
+            if (event.type === "message_delta") {
+              stopReason = event.delta.stop_reason ?? null;
+            }
+          }
+
+          // Reconstruit le contenu de l'assistant pour l'historique de conversation
+          const assistantContent: Anthropic.MessageParam["content"] = [];
+          if (currentText) {
+            (assistantContent as Array<{ type: "text"; text: string }>).push({ type: "text", text: currentText });
+          }
+          // Parse les inputs finaux des tools
+          const parsedToolUses = toolUses.map((tu) => {
+            let inputObj: Record<string, unknown> = {};
+            try { inputObj = JSON.parse(tu.input || "{}"); } catch { /* ignore */ }
+            return { id: tu.id, name: tu.name, input: inputObj };
+          });
+          for (const tu of parsedToolUses) {
+            (assistantContent as Array<{ type: "tool_use"; id: string; name: string; input: Record<string, unknown> }>).push({
+              type: "tool_use",
+              id: tu.id,
+              name: tu.name,
+              input: tu.input,
+            });
+          }
+
+          // Pas de tool_use → réponse finale
+          if (stopReason !== "tool_use" || parsedToolUses.length === 0) break;
+
+          conversation.push({ role: "assistant", content: assistantContent });
+
+          // Exécute les tools et collecte les résultats
+          const results: Anthropic.ToolResultBlockParam[] = [];
+          for (const tu of parsedToolUses) {
+            let result: unknown;
+            try {
+              result = await runTool(tu.name, tu.input, user.id, user.email ?? "");
+
+              // Après un save réussi : met à jour subscriptionId et recharge le draft
+              if (
+                tu.name === "save_subscription_config" &&
+                result &&
+                typeof result === "object"
+              ) {
+                const saved = result as { subscription_id: string };
+                subscriptionId = saved.subscription_id;
+
+                // Recharge le brouillon complet pour l'event draft
+                const { data: freshDraft } = await supabase
+                  .from("subscriptions")
+                  .select(
+                    "id, name, channel, destination, destination_label, frequency_cron, tone, language, status, sources(url, feed_url, title, type, validation_status, added_by)"
+                  )
+                  .eq("id", subscriptionId)
+                  .maybeSingle();
+
+                if (freshDraft) {
+                  sseEvent(controller, {
+                    type: "draft",
+                    draft: freshDraft,
+                    subscriptionId,
+                  });
+                }
+              }
+            } catch (e) {
+              result = { error: e instanceof Error ? e.message : "Erreur tool" };
+            }
+            results.push({
+              type: "tool_result",
+              tool_use_id: tu.id,
+              content: JSON.stringify(result),
+            });
+          }
+          conversation.push({ role: "user", content: results });
+
+          // Séparateur de segments si du texte a déjà été émis
+          if (currentText && !currentText.endsWith("\n")) {
+            sseEvent(controller, { type: "delta", text: "\n\n" });
+          }
         }
-      } catch (e) {
-        result = { error: e instanceof Error ? e.message : "Erreur tool" };
+
+        // Log de la dépense réelle du tour
+        if (usage.input_tokens + usage.output_tokens > 0) {
+          await supabase.from("usage_log").insert({
+            user_id: user.id,
+            kind: "chat",
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            cost_usd: costUsd(usage.input_tokens, usage.output_tokens).toFixed(4),
+          });
+        }
+
+        // Événement final
+        sseEvent(controller, { type: "done", subscriptionId, usage });
+        controller.close();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Something went wrong";
+        sseEvent(controller, { type: "error", message });
+        controller.close();
       }
-      results.push({ type: "tool_result", tool_use_id: tu.id, content: JSON.stringify(result) });
-    }
-    conversation.push({ role: "user", content: results });
-  }
+    },
+  });
 
-  // Log de la dépense réelle du tour (pour le plafond mensuel)
-  if (usage.input_tokens + usage.output_tokens > 0) {
-    await supabase.from("usage_log").insert({
-      user_id: user.id,
-      kind: "chat",
-      input_tokens: usage.input_tokens,
-      output_tokens: usage.output_tokens,
-      cost_usd: costUsd(usage.input_tokens, usage.output_tokens).toFixed(4),
-    });
-  }
-
-  // Recharge le brouillon pour l'encart de récap côté client
-  let draft = null;
-  if (subscriptionId) {
-    const { data } = await supabase
-      .from("subscriptions")
-      .select("id, name, channel, destination, destination_label, frequency_cron, tone, language, status, sources(url, feed_url, title, type, validation_status, added_by)")
-      .eq("id", subscriptionId)
-      .maybeSingle();
-    draft = data;
-  }
-
-  return NextResponse.json({ reply: finalText, subscriptionId, draft, usage });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }
