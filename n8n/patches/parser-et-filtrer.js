@@ -12,16 +12,34 @@ const sourcesMeta = $('Préparer les sources').all().map(i => i.json);
 const responses = $input.all();
 
 // ── Fenêtre de fraîcheur selon la fréquence d'envoi ──────────────────────────
+// CORRIGÉ : l'ancienne version classait "0 8 * * 1-5" (quotidien en semaine)
+// comme HEBDO (test naïf dow !== '*') → fenêtre de 8 jours au lieu de 30h,
+// d'où les vieux articles dans les digests quotidiens. On raisonne maintenant
+// en envois/semaine, en développant les plages (1-5 = 5 jours).
 function lookbackHours(cron) {
   const parts = String(cron || '').trim().split(/\s+/);
   const hours = parts[1] || '7';
   const dow   = parts[4] || '*';
+
+  const runsPerDay = hours.split(',').length;
+  let daysPerWeek = 7;
   if (dow !== '*') {
-    // Envoi hebdo → 8 jours, bi-hebdo → 4 jours
-    return dow.split(',').length <= 1 ? 8 * 24 : 4 * 24;
+    daysPerWeek = dow.split(',').reduce((acc, p) => {
+      const m = p.match(/^(\d+)-(\d+)$/);
+      return acc + (m ? (parseInt(m[2]) - parseInt(m[1]) + 1) : 1);
+    }, 0);
   }
-  if (hours.includes(',')) return 14; // 2x/jour
-  return 30;                          // quotidien
+  const runsPerWeek = runsPerDay * daysPerWeek;
+
+  if (runsPerWeek >= 10) return 14;      // 2x/jour
+  if (runsPerWeek >= 5) {
+    // Quotidien : 30h, sauf le lundi d'une veille lun-ven où on couvre
+    // le week-end écoulé (sinon les news de samedi/dimanche sont perdues).
+    const isMondayWeekdaysOnly = new Date().getDay() === 1 && !/[06]/.test(dow);
+    return isMondayWeekdaysOnly ? 78 : 30;
+  }
+  if (runsPerWeek >= 2) return 4 * 24;   // bi-hebdo
+  return 8 * 24;                         // hebdo
 }
 const lbHours = lookbackHours(config.frequency_cron);
 const cutoff  = new Date(Date.now() - lbHours * 3600 * 1000);
@@ -132,6 +150,15 @@ function stripTags(s) {
   return String(s || '')
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/<[^>]+>/g, '')
+    // Décode les entités HTML courantes : les flux RSS encodent les URLs
+    // (&amp; dans les query strings) et les titres — sans décodage, les
+    // params de tracking ne sont pas reconnus et la dédup se dérègle.
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;|&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -228,6 +255,11 @@ responses.forEach((item, idx) => {
     }
   } else {
     // ── Source HTML (type scrape) : extraction grossière ─────────────
+    // Uniquement pour les sources DÉCLARÉES scrape : si une source RSS
+    // renvoie un body non-XML, c'est un échec de fetch (ex. 502 HTML),
+    // pas un contenu — on la saute au lieu d'en faire un faux article.
+    if (meta.source_type !== 'scrape') return;
+
     const urlRaw  = meta.source_url;
     const urlNorm = normalizeUrl(urlRaw);
     if (!urlNorm) return;

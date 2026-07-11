@@ -1,92 +1,46 @@
 -- Migration 0002 : déduplication et fraîcheur du moteur Veille Engine
--- Idempotente : chaque instruction utilise IF NOT EXISTS / ON CONFLICT safe.
--- À appliquer une seule fois via le SQL Editor Supabase ou la CLI.
--- Date : 2026-07-11
+-- Idempotente : peut être rejouée sans effet de bord.
+-- À coller dans le SQL Editor Supabase AVANT (ou en même temps que) les
+-- patchs n8n : le nouveau select du node « Charger la config » référence
+-- title_key et l'insert écrit url_norm/title/title_key — sans ces colonnes,
+-- le moteur échoue à chaque exécution.
+-- Date : 2026-07-11 (ajustée après vérification de la prod : la contrainte
+-- unique (subscription_id, url_hash) existe déjà, on ne la recrée pas).
 
 -- ─────────────────────────────────────────────────────────────────
 -- 1. NOUVELLES COLONNES sur delivered_items
 -- ─────────────────────────────────────────────────────────────────
 
--- url_norm : URL normalisée côté applicatif (remplie par le JS du moteur
---            à partir de maintenant ; NULL pour l'historique — ok, le JS
---            gère les deux formats via triple-clé).
+-- url_norm : URL normalisée par le moteur (NULL pour l'historique — ok,
+--            le JS gère les deux formats via triple-clé).
+-- title / title_key : dédup par similarité de titre (même news reprise
+--            par plusieurs médias).
 ALTER TABLE delivered_items
   ADD COLUMN IF NOT EXISTS url_norm  text,
   ADD COLUMN IF NOT EXISTS title     text,
   ADD COLUMN IF NOT EXISTS title_key text;
 
 -- ─────────────────────────────────────────────────────────────────
--- 2. NETTOYAGE DES DOUBLONS EXISTANTS
---    On garde la ligne la plus ANCIENNE par (subscription_id, url_hash)
---    — c'est la vraie première livraison, la moins risquée à conserver.
---    Les lignes plus récentes avec le même couple sont supprimées.
+-- 2. url_hash vides hérités → NULL
+--    La contrainte unique existante (delivered_items_subscription_id_url_hash_key)
+--    autorise les NULL multiples (NULLS DISTINCT), pas les '' multiples.
+--    C'est aussi ce qui permet à l'upsert-ignore PostgREST
+--    (on_conflict=subscription_id,url_hash) de fonctionner proprement.
 -- ─────────────────────────────────────────────────────────────────
 
-DELETE FROM delivered_items
-WHERE id IN (
-  SELECT id
-  FROM (
-    SELECT
-      id,
-      ROW_NUMBER() OVER (
-        PARTITION BY subscription_id, url_hash
-        ORDER BY delivered_at ASC  -- garde la plus ancienne
-      ) AS rn
-    FROM delivered_items
-    WHERE url_hash IS NOT NULL
-      AND url_hash <> ''
-  ) ranked
-  WHERE rn > 1
-);
-
--- Doublons sans url_hash (lignes héritées avant la colonne url_hash) :
--- On les dédoublonne sur (subscription_id, url) à défaut.
-DELETE FROM delivered_items
-WHERE id IN (
-  SELECT id
-  FROM (
-    SELECT
-      id,
-      ROW_NUMBER() OVER (
-        PARTITION BY subscription_id, url
-        ORDER BY delivered_at ASC
-      ) AS rn
-    FROM delivered_items
-    WHERE (url_hash IS NULL OR url_hash = '')
-      AND url IS NOT NULL
-  ) ranked
-  WHERE rn > 1
-);
-
--- ─────────────────────────────────────────────────────────────────
--- 3. INDEX UNIQUE sur (subscription_id, url_hash) — après dédoublonnage
---    Cet index sert de garde-fou côté base ; l'upsert PostgREST du moteur
---    utilisera on_conflict=subscription_id,url_hash + Prefer: resolution=ignore-duplicates.
---    ATTENTION : l'index doit être COMPLET (pas partiel), sinon PostgREST
---    génère ON CONFLICT (subscription_id, url_hash) sans prédicat et Postgres
---    ne peut pas inférer un index partiel → erreur à l'insert.
---    Les NULL multiples restent permis (NULLS DISTINCT, défaut Postgres).
--- ─────────────────────────────────────────────────────────────────
-
--- Normalise les url_hash vides hérités en NULL pour ne pas violer l'unicité.
 UPDATE delivered_items SET url_hash = NULL WHERE url_hash = '';
 
-CREATE UNIQUE INDEX IF NOT EXISTS uidx_delivered_items_sub_urlhash
-  ON delivered_items (subscription_id, url_hash);
-
 -- ─────────────────────────────────────────────────────────────────
--- 4. INDEX SIMPLE sur (subscription_id, title_key) — dédup par titre
---    Pas unique car deux articles différents peuvent partager des mots-clés
---    similaires (faux positif acceptable) ; on utilise juste une présence/absence.
+-- 3. INDEX pour la dédup par titre et le chargement de l'historique
 -- ─────────────────────────────────────────────────────────────────
 
+-- Pas unique : deux articles différents peuvent partager une empreinte
+-- de titre proche (faux positif acceptable) ; on teste juste la présence.
 CREATE INDEX IF NOT EXISTS idx_delivered_items_sub_titlekey
   ON delivered_items (subscription_id, title_key)
   WHERE title_key IS NOT NULL;
 
--- ─────────────────────────────────────────────────────────────────
--- 5. INDEX sur delivered_at pour les requêtes de fraîcheur (ordre desc)
--- ─────────────────────────────────────────────────────────────────
-
+-- Le moteur charge les 800 derniers items triés par date : cet index
+-- évite un scan complet à chaque exécution.
 CREATE INDEX IF NOT EXISTS idx_delivered_items_delivered_at
   ON delivered_items (subscription_id, delivered_at DESC);
