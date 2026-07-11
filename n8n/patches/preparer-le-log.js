@@ -10,10 +10,16 @@
 const v        = $('Valider la réponse').first().json;
 const sendResp = $input.first().json;
 
-// Bot Slack : 200 même en erreur (ok=false). Webhook : body texte 'ok'.
+// Détection d'échec d'envoi, deux formes possibles :
+// - Bot Slack : HTTP 200 mais ok=false dans le JSON
+// - Node en "Continue (using regular output)" : l'échec HTTP (Brevo, webhook…)
+//   arrive ici comme item portant un champ `error`
+const httpFailure = sendResp && sendResp.error
+  ? ('Send failed: ' + (sendResp.error.message || String(JSON.stringify(sendResp.error)).slice(0, 200)))
+  : null;
 const slackError = sendResp && sendResp.ok === false
   ? ('Slack: ' + sendResp.error)
-  : null;
+  : httpFailure;
 
 // ── Même normalizeUrl que dans "Parser et filtrer" ───────────────────────────
 // (copiée ici car les nodes Code n8n ne partagent pas de modules)
