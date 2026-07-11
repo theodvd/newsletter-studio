@@ -7,6 +7,9 @@ import { ENGINE_RUN_COST_USD } from "./pricing";
  *         + livraisons du moteur (deliveries × coût moyen par exécution).
  * Les requêtes passent par le client RLS : elles ne voient que les
  * données de l'utilisateur connecté.
+ *
+ * MONTHLY_CAP_USD est conservé pour la rétrocompatibilité (api/chat l'importe).
+ * La logique plan-aware passe par les PLAN_LIMITS de src/lib/plan.ts.
  */
 export const MONTHLY_CAP_USD = 1.5;
 
@@ -29,7 +32,20 @@ export async function monthlySpendUsd(supabase: SupabaseClient): Promise<number>
   return chatSpend + (deliveryCount ?? 0) * ENGINE_RUN_COST_USD;
 }
 
-/** Coût mensuel projeté d'un ensemble de crons (pour bloquer au provisioning). */
-export function projectedMonthlyCostUsd(crons: string[], runsPerWeekFn: (c: string) => number): number {
-  return crons.reduce((sum, c) => sum + runsPerWeekFn(c) * AVG_WEEKS_PER_MONTH * ENGINE_RUN_COST_USD, 0);
+/** Coût mensuel projeté d'un ensemble de crons (pour bloquer au provisioning).
+ * @param crons         Liste des expressions cron 5-champs actives + la nouvelle.
+ * @param runsPerWeekFn Fonction qui convertit un cron en nb d'exécutions/semaine.
+ * @param capUsd        Plafond à comparer (optionnel, non utilisé ici mais
+ *                      disponible pour des helpers futurs).
+ */
+export function projectedMonthlyCostUsd(
+  crons: string[],
+  runsPerWeekFn: (c: string) => number,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _capUsd?: number
+): number {
+  return crons.reduce(
+    (sum, c) => sum + runsPerWeekFn(c) * AVG_WEEKS_PER_MONTH * ENGINE_RUN_COST_USD,
+    0
+  );
 }
