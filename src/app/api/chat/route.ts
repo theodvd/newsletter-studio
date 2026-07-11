@@ -17,11 +17,11 @@ export const maxDuration = 120;
  * serveur, jusqu'à une réponse finale. Le client lit les événements au fil de l'eau.
  *
  * Événements SSE émis (une ligne "data: {json}\n\n" par événement) :
- *   { type: "delta", text }            — token de texte
- *   { type: "status", label }          — tool en cours
- *   { type: "draft", draft, subscriptionId } — après un save réussi
- *   { type: "done", subscriptionId, usage } — fin de la réponse
- *   { type: "error", message }         — erreur fatale
+ *   { type: "delta", text }            : token de texte
+ *   { type: "status", label }          : tool en cours
+ *   { type: "draft", draft, subscriptionId } : après un save réussi
+ *   { type: "done", subscriptionId, usage } : fin de la réponse
+ *   { type: "error", message }         : erreur fatale
  */
 
 const TOOLS: Anthropic.Tool[] = [
@@ -274,7 +274,7 @@ export async function POST(request: Request) {
     return new Response(
       `data: ${JSON.stringify({
         type: "error",
-        message: `You've reached your monthly usage cap ($${limits.monthlyCapUsd.toFixed(2)}).${upgradeHint} It resets on the 1st — your running digests keep going until then.`,
+        message: `You've reached your monthly usage cap ($${limits.monthlyCapUsd.toFixed(2)}).${upgradeHint} It resets on the 1st; your running digests keep going until then.`,
       })}\n\n`,
       { status: 429, headers: { "Content-Type": "text/event-stream" } }
     );
@@ -302,14 +302,14 @@ export async function POST(request: Request) {
       configContext =
         `\n\nConfiguration actuelle de la veille (status: ${current.status}` +
         (current.status === "active"
-          ? " — VEILLE EN LIGNE en cours d'édition : chaque save_subscription_config s'applique IMMÉDIATEMENT, y compris la mise à jour du cron n8n. Confirme clairement chaque changement appliqué."
+          ? " (VEILLE EN LIGNE en cours d'édition : chaque save_subscription_config s'applique IMMÉDIATEMENT, y compris la mise à jour du cron n8n. Confirme clairement chaque changement appliqué.)"
           : "") +
         `) :\n${JSON.stringify(masked)}`;
     }
   }
 
   // Section dynamique injectée dans le system prompt : plan + limites
-  const planContext = `\n\n## Plan de l'utilisateur\nPlan actuel : **${limits.label}**\n- Veilles actives max : ${limits.maxActiveDigests}\n- Envois max/semaine : ${limits.maxRunsPerWeek} (${limits.maxRunsPerWeek >= 14 ? "jusqu'à 2/jour" : "1/jour max"})\n- Sources max (quotidien) : ${limits.maxSourcesDaily} | (hebdo/bi-hebdo) : ${limits.maxSourcesWeekly}\n- Profondeur d'analyse : ${limits.depth}\n\nRègle : configure DANS ces limites. Si l'utilisateur demande plus (ex: 3 veilles sur Free, 2x/jour sur Free), propose-lui le plan Pro sans être insistant — une seule mention suffit.`;
+  const planContext = `\n\n## Plan de l'utilisateur\nPlan actuel : **${limits.label}**\n- Veilles actives max : ${limits.maxActiveDigests}\n- Envois max/semaine : ${limits.maxRunsPerWeek} (${limits.maxRunsPerWeek >= 14 ? "jusqu'à 2/jour" : "1/jour max"})\n- Sources max (quotidien) : ${limits.maxSourcesDaily} | (hebdo/bi-hebdo) : ${limits.maxSourcesWeekly}\n- Profondeur d'analyse : ${limits.depth}\n\nRègle : configure DANS ces limites. Si l'utilisateur demande plus (ex: 3 veilles sur Free, 2x/jour sur Free), propose-lui le plan Pro sans être insistant, une seule mention suffit.`;
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const conversation: Anthropic.MessageParam[] = [...messages];

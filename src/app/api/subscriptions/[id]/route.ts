@@ -4,8 +4,8 @@ import { setWorkflowActive, deleteWorkflow } from "@/lib/n8n";
 
 /**
  * Actions sur une veille :
- * PATCH { action: "pause" | "resume" } — désactive/réactive le workflow n8n
- * DELETE — supprime le workflow n8n puis la veille (cascade sur sources/deliveries)
+ * PATCH { action: "pause" | "resume" } : désactive/réactive le workflow n8n
+ * DELETE : supprime le workflow n8n puis la veille (cascade sur sources/deliveries)
  */
 
 async function getOwnedSubscription(id: string) {

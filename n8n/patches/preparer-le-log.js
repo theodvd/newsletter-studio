@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// NODE : "Préparer le log" — remplacement complet
+// NODE : "Préparer le log" : remplacement complet
 // Correctifs appliqués :
-//   Bug 2 partiellement (le noeud lui-même) — items_rows construit avec
+//   Bug 2 partiellement (le noeud lui-même) : items_rows construit avec
 //          l'URL d'ORIGINE du flux (pas l'URL sortie Claude), url_hash et
 //          url_norm calculés avec normalizeUrl robuste, title et title_key remplis.
-//   Bug 3 — url stockée = URL flux via correspondance url_norm ↔ url_norm Claude
+//   Bug 3 : url stockée = URL flux via correspondance url_norm ↔ url_norm Claude
 // ─────────────────────────────────────────────────────────────────────────────
 
 const v        = $('Valider la réponse').first().json;
@@ -97,7 +97,7 @@ try {
   }
 } catch (_) {
   // Si le node n'est pas accessible (exécution partielle), on continue
-  // sans correspondance — items_rows utilisera l'URL Claude comme fallback.
+  // sans correspondance : items_rows utilisera l'URL Claude comme fallback.
 }
 
 // ── Construire items_rows ─────────────────────────────────────────────────────

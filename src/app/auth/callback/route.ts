@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 /**
  * Callback du magic link : échange le code contre une session.
- * Inscription ouverte — toute personne avec un email valide peut créer son compte
+ * Inscription ouverte : toute personne avec un email valide peut créer son compte
  * (le profil est créé automatiquement par le trigger handle_new_user).
  */
 export async function GET(request: Request) {

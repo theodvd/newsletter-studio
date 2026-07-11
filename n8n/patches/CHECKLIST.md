@@ -1,10 +1,10 @@
-# Checklist d'application — Correctifs Veille Engine
+# Checklist d'application : Correctifs Veille Engine
 
 > Ordre obligatoire : SQL d'abord, puis n8n. Ne pas inverser.
 
 ---
 
-## Étape 1 — Appliquer la migration SQL (Supabase)
+## Étape 1 : Appliquer la migration SQL (Supabase)
 
 1. Aller dans le [dashboard Supabase](https://supabase.com/dashboard/project/votre-projet) > **SQL Editor**.
 2. Ouvrir le fichier `supabase/migrations/0002_dedup.sql` (dans le dépôt).
@@ -24,7 +24,7 @@
 
 ---
 
-## Étape 2 — Ouvrir le workflow dans n8n
+## Étape 2 : Ouvrir le workflow dans n8n
 
 1. Aller sur [https://n8n.exemple.com](https://n8n.exemple.com).
 2. Ouvrir le workflow **Veille Engine** (`FcWnRuCpmFOhO002`).
@@ -32,7 +32,7 @@
 
 ---
 
-## Étape 3 — Modifier le select du node "Charger la config"
+## Étape 3 : Modifier le select du node "Charger la config"
 
 1. Cliquer sur le node **Charger la config**.
 2. Aller dans **Query Parameters**.
@@ -51,7 +51,7 @@
 
 ---
 
-## Étape 4 — Remplacer le code du node "Parser et filtrer"
+## Étape 4 : Remplacer le code du node "Parser et filtrer"
 
 1. Cliquer sur le node **Parser et filtrer**.
 2. Ouvrir l'onglet **Code** (ou le champ JS Code).
@@ -61,7 +61,7 @@
 
 ---
 
-## Étape 5 — Remplacer le code du node "Préparer le log"
+## Étape 5 : Remplacer le code du node "Préparer le log"
 
 1. Cliquer sur le node **Préparer le log**.
 2. Ouvrir l'onglet **Code**.
@@ -71,7 +71,7 @@
 
 ---
 
-## Étape 6 — Activer "Continue on Fail" sur les 3 nodes d'envoi
+## Étape 6 : Activer "Continue on Fail" sur les 3 nodes d'envoi
 
 > C'est la correction du Bug 2 : si un envoi échoue, le logging s'exécute quand même.
 
@@ -93,7 +93,7 @@ Faire :
 
 ---
 
-## Étape 7 — Configurer le node "Logger les items envoyés" en upsert-ignore
+## Étape 7 : Configurer le node "Logger les items envoyés" en upsert-ignore
 
 Le node insère dans `delivered_items`. Avec l'index unique créé par la migration,
 une insertion en doublon lèverait une erreur. On configure le node en **upsert-ignore**
@@ -116,7 +116,7 @@ via PostgREST pour qu'il ignore les conflits silencieusement.
 
 ---
 
-## Étape 8 — Vérifier les credentials après les modifications
+## Étape 8 : Vérifier les credentials après les modifications
 
 Après toute sauvegarde (notamment les étapes 6 et 7 qui font un PUT), vérifier
 que chaque node ci-dessous a bien son credential assigné (badge **vert**) :
@@ -134,7 +134,7 @@ Si un badge est **rouge** ou **gris** : cliquer sur le node > onglet Credentials
 
 ---
 
-## Étape 9 — Run de test
+## Étape 9 : Run de test
 
 1. S'assurer que la subscription de test existe avec l'ID :
    `22222222-2222-4222-8222-222222222222`
@@ -184,8 +184,8 @@ ou le flux est vide sur la fenêtre de temps) :
 
 Si le code existant contenait un mécanisme de "fallback" qui réinjectait du vieux contenu
 (articles non filtrés comme dernier recours) : ce fallback est **neutralisé** dans le nouveau
-code — la fonction retourne [] explicitement avec un message console explicatif.
+code : la fonction retourne [] explicitement avec un message console explicatif.
 
 Un digest court (1-2 items frais) est préférable à un digest avec du contenu périmé.
 Si la veille est trop courte trop souvent, la solution correcte est d'élargir la fenêtre
-de fraîcheur (`lookbackHours`) ou d'ajouter des sources — pas de réinjecter du vieux contenu.
+de fraîcheur (`lookbackHours`) ou d'ajouter des sources, pas de réinjecter du vieux contenu.

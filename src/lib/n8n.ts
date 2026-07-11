@@ -36,7 +36,7 @@ function thinWorkflow(opts: { name: string; cron: string; subscriptionId: string
   if (!engineId) throw new Error("N8N_ENGINE_WORKFLOW_ID manquant dans .env");
 
   return {
-    name: `Veille — ${opts.name}`,
+    name: `Veille · ${opts.name}`,
     settings: { executionOrder: "v1" },
     nodes: [
       {

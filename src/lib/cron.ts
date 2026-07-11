@@ -22,7 +22,7 @@ export function describeCron(cron: string): string {
   if (dow !== "*") {
     const rendered = dow.split(",").map((d) => {
       const range = d.match(/^(\d)-(\d)$/);
-      if (range) return `${DAY_NAMES[+range[1]] ?? d}–${DAY_NAMES[+range[2]] ?? d}`;
+      if (range) return `${DAY_NAMES[+range[1]] ?? d}-${DAY_NAMES[+range[2]] ?? d}`;
       return DAY_NAMES[+d] ?? d;
     });
     if (rendered.some((r) => r.includes("undefined"))) return cron;

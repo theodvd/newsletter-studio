@@ -1,10 +1,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// NODE : "Parser et filtrer"  — remplacement complet
+// NODE : "Parser et filtrer" : remplacement complet
 // Correctifs appliqués :
-//   Bug 1 — items sans date contournaient le filtre de fraîcheur
-//   Bug 3 — normalizeUrl ne gérait pas http/https ni www → doublons
-//   Nouveau — dédup intra-run par titre (titleKey)
-//   Nouveau — chaque item émis porte url_norm et title_key pour la suite
+//   Bug 1 : items sans date contournaient le filtre de fraîcheur
+//   Bug 3 : normalizeUrl ne gérait pas http/https ni www → doublons
+//   Nouveau : dédup intra-run par titre (titleKey)
+//   Nouveau : chaque item émis porte url_norm et title_key pour la suite
 // ─────────────────────────────────────────────────────────────────────────────
 
 const config = $('Charger la config').first().json;
@@ -96,7 +96,7 @@ function normalizeUrlLegacy(rawUrl) {
   return String(rawUrl || '').replace(/[?#].*$/, '').replace(/\/$/, '');
 }
 
-// ── Construire le set des URLs déjà envoyées — triple clé ────────────────────
+// ── Construire le set des URLs déjà envoyées (triple clé) ────────────────────
 // On compare sur trois formes pour ne rater ni l'ancien ni le nouveau format :
 //   1. url_hash tel que stocké (normalisé nouvelle fonction, déjà en base)
 //   2. normalizeUrlLegacy(d.url)  → ancien format
@@ -151,7 +151,7 @@ function stripTags(s) {
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/<[^>]+>/g, '')
     // Décode les entités HTML courantes : les flux RSS encodent les URLs
-    // (&amp; dans les query strings) et les titres — sans décodage, les
+    // (&amp; dans les query strings) et les titres : sans décodage, les
     // params de tracking ne sont pas reconnus et la dédup se dérègle.
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
@@ -203,7 +203,7 @@ responses.forEach((item, idx) => {
       // épinglés / evergreen qui tournent en boucle.
       // Au-delà de 48h (hebdo), on accepte mais on tague "undated".
       if (!pubDate) {
-        if (lbHours <= 48) continue; // rejeté — pas de date, fenêtre courte
+        if (lbHours <= 48) continue; // rejeté : pas de date, fenêtre courte
         // Sinon : item sans date accepté avec tag undated (hebdo)
       } else {
         if (pubDate < cutoff) continue; // trop vieux
@@ -257,7 +257,7 @@ responses.forEach((item, idx) => {
     // ── Source HTML (type scrape) : extraction grossière ─────────────
     // Uniquement pour les sources DÉCLARÉES scrape : si une source RSS
     // renvoie un body non-XML, c'est un échec de fetch (ex. 502 HTML),
-    // pas un contenu — on la saute au lieu d'en faire un faux article.
+    // pas un contenu : on la saute au lieu d'en faire un faux article.
     if (meta.source_type !== 'scrape') return;
 
     const urlRaw  = meta.source_url;
@@ -308,7 +308,7 @@ if (articles.length === 0) {
   // vieux contenu. Le moteur s'arrête ici sans envoyer.
   console.log(
     'Veille Engine: aucun article frais (cutoff ' + cutoff.toISOString() +
-    ', lookback ' + lbHours + 'h). Fin sans envoi — pas de fallback sur le vieux contenu.'
+    ', lookback ' + lbHours + 'h). Fin sans envoi, pas de fallback sur le vieux contenu.'
   );
   return [];
 }

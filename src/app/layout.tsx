@@ -19,7 +19,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Newsletter Studio — Lia",
+  title: "Newsletter Studio · Lia",
   description: "Your tailored briefing, designed in one conversation with Lia",
 };
 

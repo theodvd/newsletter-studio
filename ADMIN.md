@@ -1,4 +1,4 @@
-# Guide d'administration — Newsletter Studio
+# Guide d'administration : Newsletter Studio
 
 Tout ce que tu peux modifier toi-même, sans toucher au code.
 
@@ -76,7 +76,7 @@ En dev local : `npm run dev` (avec `.env.local`, qui garde l'URL localhost).
 ## ⚠️ Pièges connus
 
 - **Supabase via HTTP dans n8n** : il faut le credential type *Supabase API*
-  (Host + Service Role Secret) — un simple header `apikey` ne suffit pas (RLS bloque).
+  (Host + Service Role Secret) : un simple header `apikey` ne suffit pas (RLS bloque).
 - **Mise à jour du moteur via l'API n8n** : efface les assignations de credentials
   de tous les nodes → les re-sélectionner après chaque update.
 - **Workflows fins** : ne pas les éditer à la main sauf le cron ; toute la logique

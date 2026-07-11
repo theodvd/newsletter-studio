@@ -40,7 +40,7 @@ export default async function HomePage() {
         </Reveal>
         <Reveal delay={0.16}>
           <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-400">
-            Tell Lia what you do and what you want to follow — she finds the right sources,
+            Tell Lia what you do and what you want to follow. She finds the right sources,
             and every edition lands on Slack or in your inbox, on your schedule.
           </p>
         </Reveal>
@@ -66,8 +66,8 @@ export default async function HomePage() {
               </h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-400">
                 {subscriptions?.length
-                  ? `${subscriptions.length} digest${subscriptions.length > 1 ? "s" : ""} running — history, pause, settings.`
-                  : "Nothing running yet — your first digest takes 5 minutes."}
+                  ? `${subscriptions.length} digest${subscriptions.length > 1 ? "s" : ""} running · history, pause, settings.`
+                  : "Nothing running yet. Your first digest takes 5 minutes."}
               </p>
               <p className="mt-5 text-sm font-medium text-accent transition-transform duration-300 group-hover:translate-x-1">
                 Open →

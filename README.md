@@ -16,7 +16,7 @@ App Next.js (ce repo, self-hosted)
 n8n (https://n8n.exemple.com)
  ├─ 1 workflow FIN par utilisateur : Schedule Trigger (son cron)
  │   → Execute Workflow(subscription_id)        ← créé par /api/provision
- └─ "Veille Engine — Moteur partagé" (FcWnRuCpmFOhO002) :
+ └─ "Veille Engine · Moteur partagé" (FcWnRuCpmFOhO002) :
      config Supabase → fetch sources → fraîcheur + dédup → Claude
      → rendu Slack Block Kit ou HTML → Slack / Brevo → logs + Langfuse
 ```
@@ -33,11 +33,11 @@ cp .env.example .env.local   # dev (ou .env pour docker)
 `SOURCE_KEY_ENCRYPTION_SECRET` (`openssl rand -hex 32`).
 
 ### 2. Credentials dans n8n (une seule fois, manuel)
-Ouvrir le workflow **Veille Engine — Moteur partagé** et sélectionner dans chaque nœud :
-1. **Supabase Service Role (apikey)** — à créer : type *Header Auth*, nom du header `apikey`,
+Ouvrir le workflow **Veille Engine · Moteur partagé** et sélectionner dans chaque nœud :
+1. **Supabase Service Role (apikey)** : à créer : type *Header Auth*, nom du header `apikey`,
    valeur = clé service_role → nœuds « Charger la config », « Logger la delivery », « Logger les items envoyés »
 2. **Anthropic** (existant, Growfin) → « Appel Claude »
-3. **Slack Lia Bot** — à créer : type *Slack API*, token bot `xoxb-…` → « Envoyer sur Slack »
+3. **Slack Lia Bot** : à créer : type *Slack API*, token bot `xoxb-…` → « Envoyer sur Slack »
 4. **Brevo** (existant, Growfin) → « Envoyer par email »
 5. **Langfuse** (existant, Growfin) → « Envoyer la trace Langfuse »
 

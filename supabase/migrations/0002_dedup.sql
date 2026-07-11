@@ -2,7 +2,7 @@
 -- Idempotente : peut être rejouée sans effet de bord.
 -- À coller dans le SQL Editor Supabase AVANT (ou en même temps que) les
 -- patchs n8n : le nouveau select du node « Charger la config » référence
--- title_key et l'insert écrit url_norm/title/title_key — sans ces colonnes,
+-- title_key et l'insert écrit url_norm/title/title_key : sans ces colonnes,
 -- le moteur échoue à chaque exécution.
 -- Date : 2026-07-11 (ajustée après vérification de la prod : la contrainte
 -- unique (subscription_id, url_hash) existe déjà, on ne la recrée pas).
@@ -11,7 +11,7 @@
 -- 1. NOUVELLES COLONNES sur delivered_items
 -- ─────────────────────────────────────────────────────────────────
 
--- url_norm : URL normalisée par le moteur (NULL pour l'historique — ok,
+-- url_norm : URL normalisée par le moteur (NULL pour l'historique, ok,
 --            le JS gère les deux formats via triple-clé).
 -- title / title_key : dédup par similarité de titre (même news reprise
 --            par plusieurs médias).

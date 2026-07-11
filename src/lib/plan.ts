@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /**
  * Plans Free / Pro.
  * Axe de monétisation : fréquence de livraison + profondeur d'analyse
- * (pas le nombre de veilles — personne ne veut 10 newsletters).
+ * (pas le nombre de veilles, personne ne veut 10 newsletters).
  *
  * Free : 1 veille active, au choix hebdomadaire (jusqu'à 8 sources)
  *        ou quotidienne limitée (1 envoi/jour, jusqu'à 5 sources).

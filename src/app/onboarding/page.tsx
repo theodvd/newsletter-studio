@@ -168,7 +168,7 @@ function Onboarding() {
             setMessages([
               {
                 role: "assistant",
-                content: `You're editing **${data.draft.name}**${data.draft.status === "active" ? ", which is currently live" : ""}.\n\nTell me what you'd like to change — add or remove sources, adjust the schedule, the tone, or the focus — and I'll apply it right away.`,
+                content: `You're editing **${data.draft.name}**${data.draft.status === "active" ? ", which is currently live" : ""}.\n\nTell me what you'd like to change (add or remove sources, adjust the schedule, the tone, or the focus) and I'll apply it right away.`,
               },
             ]);
           }
@@ -266,7 +266,7 @@ function Onboarding() {
       });
 
       if (!res.ok || !res.body) {
-        // Erreur HTTP (ex: 429) — le corps peut contenir un event SSE d'erreur
+        // Erreur HTTP (ex: 429) : le corps peut contenir un event SSE d'erreur
         const text = await res.text();
         let message = `Request failed (${res.status})`;
         try {
@@ -747,7 +747,7 @@ function Onboarding() {
                   <p>
                     Slack{" "}
                     <span className="text-emerald-300">
-                      — connected ({draft.destination_label || "channel"})
+                      · connected ({draft.destination_label || "channel"})
                     </span>
                   </p>
                 ) : (
@@ -760,9 +760,9 @@ function Onboarding() {
                 )}
                 <p title={draft.frequency_cron}>
                   Schedule{" "}
-                  <span className="text-slate-300">— {describeCron(draft.frequency_cron)}</span>
+                  <span className="text-slate-300">· {describeCron(draft.frequency_cron)}</span>
                 </p>
-                {draft.tone && <p>Tone — {draft.tone}</p>}
+                {draft.tone && <p>Tone: {draft.tone}</p>}
               </div>
 
               <div>
@@ -819,7 +819,7 @@ function Onboarding() {
               className="glass rounded-2xl p-4 text-center"
             >
               <p className="text-xs leading-relaxed text-slate-400">
-                This digest is live — changes apply immediately as you chat.
+                This digest is live. Changes apply immediately as you chat.
               </p>
               <a
                 href="/dashboard"

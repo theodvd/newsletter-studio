@@ -78,7 +78,7 @@ export default async function DashboardPage() {
           <div className="glass mt-10 rounded-3xl p-14 text-center">
             <p className="font-display font-medium text-white">Nothing running yet</p>
             <p className="mt-2 text-sm text-slate-500">
-              Start a conversation with Lia — your first digest takes about 5 minutes.
+              Start a conversation with Lia. Your first digest takes about 5 minutes.
             </p>
           </div>
         </Reveal>

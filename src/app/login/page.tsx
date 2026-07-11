@@ -39,7 +39,7 @@ function LoginForm() {
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  /** Connexion par le code à 6 chiffres — marche dans n'importe quel navigateur */
+  /** Connexion par le code à 6 chiffres, marche dans n'importe quel navigateur */
   async function handleVerifyCode(e: React.FormEvent) {
     e.preventDefault();
     if (code.trim().length < 6 || verifying) return;
@@ -53,7 +53,7 @@ function LoginForm() {
     });
     if (error) {
       setCodeError(
-        `That code doesn't match ${email} — make sure it comes from the email we just sent to that exact address, or resend below.`
+        `That code doesn't match ${email}. Make sure it comes from the email we just sent to that exact address, or resend below.`
       );
       setVerifying(false);
     } else {
@@ -78,8 +78,8 @@ function LoginForm() {
         /database error/i.test(error.message)
           ? "We're at capacity for this beta (30 testers). Ask Theo for a seat."
           : /rate limit|security purposes|seconds/i.test(error.message)
-            ? "A link was just sent — wait a minute before requesting another one."
-            : "Could not send the link — try again."
+            ? "A link was just sent. Wait a minute before requesting another one."
+            : "Could not send the link. Try again."
       );
       setStatus("error");
     } else {
@@ -92,7 +92,7 @@ function LoginForm() {
 
   return (
     <main className="relative flex min-h-screen flex-col items-center justify-center px-4">
-      {/* Cristal de glace 3D — derrière le contenu, suit la souris */}
+      {/* Cristal de glace 3D : derrière le contenu, suit la souris */}
       <CrystalBackdrop />
 
       <motion.div
@@ -110,7 +110,7 @@ function LoginForm() {
         </h1>
         <p className="mx-auto mt-5 max-w-md text-base leading-relaxed text-slate-400">
           The briefing that fits you: describe what you do, Lia handles the sources,
-          and the essentials reach you — on Slack or by email.
+          and the essentials reach you, on Slack or by email.
         </p>
       </motion.div>
 
@@ -137,8 +137,8 @@ function LoginForm() {
             <p className="font-display text-center font-medium text-white">Check your inbox</p>
             <p className="mt-2 text-center text-sm leading-relaxed text-slate-400">
               We emailed <strong className="text-ice">{email}</strong>. Open the link in this
-              browser, <strong>or enter the 6-digit code</strong> from that email — the code
-              works anywhere.
+              browser, <strong>or enter the 6-digit code</strong> from that email (the code
+              works anywhere).
             </p>
 
             <form onSubmit={handleVerifyCode} className="mt-5 flex gap-2">
@@ -162,7 +162,7 @@ function LoginForm() {
             {codeError && <p className="mt-2 text-sm text-red-400">{codeError}</p>}
 
             <p className="mt-5 text-center text-xs text-slate-500">
-              Nothing received? Check spam — and in Gmail, make sure you open the{" "}
+              Nothing received? Check spam, and in Gmail, make sure you open the{" "}
               <strong>newest</strong> email in the thread.{" "}
               {cooldown > 0 ? (
                 <span className="text-slate-600">Resend available in {cooldown}s</span>
@@ -218,7 +218,7 @@ function LoginForm() {
         transition={{ duration: 1, delay: 0.6 }}
         className="relative z-10 mt-10 text-xs text-slate-600"
       >
-        No password — just a magic link. You&apos;ll stay signed in.
+        No password, just a magic link. You&apos;ll stay signed in.
       </motion.p>
     </main>
   );

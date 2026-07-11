@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   }
   if (!sub.sources?.length) {
     return NextResponse.json(
-      { error: "No sources configured yet — finish the conversation with Lia." },
+      { error: "No sources configured yet. Finish the conversation with Lia." },
       { status: 400 }
     );
   }
