@@ -7,8 +7,9 @@ import { createClient } from "@/lib/supabase/client";
 import { CrystalBackdrop } from "@/components/crystal-backdrop";
 
 /**
- * Page de connexion : magic link par email, inscription ouverte
- * (le compte est créé automatiquement au premier lien cliqué).
+ * Page de connexion : code à 6 chiffres envoyé par email (verifyOtp),
+ * avec le magic link en secours dans le même email. Inscription ouverte
+ * (le compte est créé à la première connexion réussie).
  */
 export default function LoginPage() {
   // useSearchParams impose une frontière Suspense au prerender
@@ -78,8 +79,8 @@ function LoginForm() {
         /database error/i.test(error.message)
           ? "We're at capacity for this beta (30 testers). Ask Theo for a seat."
           : /rate limit|security purposes|seconds/i.test(error.message)
-            ? "A link was just sent. Wait a minute before requesting another one."
-            : "Could not send the link. Try again."
+            ? "A code was just sent. Wait a minute before requesting another one."
+            : "Could not send the code. Try again."
       );
       setStatus("error");
     } else {
@@ -122,8 +123,8 @@ function LoginForm() {
       >
         {authFailed && (
           <p className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
-            That link expired or was opened in a different browser. Request a new one
-            and open it in this browser.
+            That link expired or was opened in a different browser. Request a new
+            email and use the 6-digit code instead: it works anywhere.
           </p>
         )}
 
@@ -136,9 +137,8 @@ function LoginForm() {
           >
             <p className="font-display text-center font-medium text-white">Check your inbox</p>
             <p className="mt-2 text-center text-sm leading-relaxed text-slate-400">
-              We emailed <strong className="text-ice">{email}</strong>. Open the link in this
-              browser, <strong>or enter the 6-digit code</strong> from that email (the code
-              works anywhere).
+              We sent a <strong>6-digit code</strong> to{" "}
+              <strong className="text-ice">{email}</strong>. Enter it below to sign in.
             </p>
 
             <form onSubmit={handleVerifyCode} className="mt-5 flex gap-2">
@@ -205,7 +205,7 @@ function LoginForm() {
               disabled={status === "sending"}
               className="w-full rounded-xl bg-gradient-to-r from-sky-400/90 to-cyan-300/90 px-4 py-3 font-display font-semibold tracking-tight text-slate-950 transition-all duration-300 hover:shadow-[0_0_30px_rgba(124,198,255,0.35)] disabled:opacity-50"
             >
-              {status === "sending" ? "Sending…" : "Send me a sign-in link"}
+              {status === "sending" ? "Sending…" : "Email me a sign-in code"}
             </button>
             {status === "error" && <p className="text-sm text-red-400">{errorMsg}</p>}
           </form>
@@ -218,7 +218,7 @@ function LoginForm() {
         transition={{ duration: 1, delay: 0.6 }}
         className="relative z-10 mt-10 text-xs text-slate-600"
       >
-        No password, just a magic link. You&apos;ll stay signed in.
+        No password: we email you a 6-digit code. You&apos;ll stay signed in.
       </motion.p>
     </main>
   );
