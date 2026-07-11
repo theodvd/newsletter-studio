@@ -1,0 +1,1 @@
+*,sources(*),delivered_items(url,url_hash,title_key),profiles(email,full_name,job_role)
