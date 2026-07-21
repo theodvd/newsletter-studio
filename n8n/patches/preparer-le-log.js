@@ -34,28 +34,40 @@ const TRACKING_PARAMS = new Set([
 
 function normalizeUrl(rawUrl) {
   if (!rawUrl) return null;
-  try {
-    const u = new URL(String(rawUrl).trim());
-    u.protocol = 'https:';
-    u.hash = '';
-    if (u.hostname.startsWith('www.')) u.hostname = u.hostname.slice(4);
-    if (u.hostname.startsWith('amp.'))  u.hostname = u.hostname.slice(4);
-    u.pathname = u.pathname
-      .replace(/\/amp\/?$/, '')
-      .replace(/\/amp\//, '/');
-    if (u.pathname !== '/' && u.pathname.endsWith('/')) {
-      u.pathname = u.pathname.slice(0, -1);
+  // Parsing manuel par regex : le sandbox des nodes Code n8n n'expose pas
+  // new URL() ni URLSearchParams (une version precedente les utilisait et
+  // toutes les URLs ressortaient null, donc 0 article retenu).
+  const s = String(rawUrl).trim();
+  const m = s.match(/^https?:\/\/([^\/?#]+)([^?#]*)(?:\?([^#]*))?/i);
+  if (!m) return null;
+
+  let host = m[1].toLowerCase();
+  if (host.indexOf('@') !== -1) host = host.slice(host.indexOf('@') + 1);
+  if (host.startsWith('www.')) host = host.slice(4);
+  if (host.startsWith('amp.')) host = host.slice(4);
+
+  let path = m[2] || '';
+  path = path.replace(/\/amp\/?$/, '').replace(/\/amp\//, '/');
+  if (path.length > 1 && path.endsWith('/')) path = path.slice(0, -1);
+
+  // Query string : retire les params de tracking, trie le reste (canonique)
+  let query = '';
+  if (m[3]) {
+    const kept = {};
+    for (const pair of m[3].split('&')) {
+      if (!pair) continue;
+      const eq = pair.indexOf('=');
+      const k = eq === -1 ? pair : pair.slice(0, eq);
+      const kLow = k.toLowerCase();
+      if (TRACKING_PARAMS.has(kLow) || kLow.indexOf('utm_') === 0) continue;
+      kept[k] = eq === -1 ? '' : pair.slice(eq + 1);
     }
-    const clean = new URLSearchParams();
-    const sorted = [...u.searchParams.keys()]
-      .filter(k => !TRACKING_PARAMS.has(k.toLowerCase()))
-      .sort();
-    for (const k of sorted) clean.set(k, u.searchParams.get(k));
-    u.search = clean.toString();
-    return u.toString();
-  } catch (_) {
-    return null;
+    const keys = Object.keys(kept).sort();
+    if (keys.length) {
+      query = '?' + keys.map(k => (kept[k] === '' ? k : k + '=' + kept[k])).join('&');
+    }
   }
+  return 'https://' + host + path + query;
 }
 
 // ── Même titleKey que dans "Parser et filtrer" ───────────────────────────────
