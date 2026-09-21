@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════
 # Newsletter Studio — déploiement sur le serveur (openclaw).
-# Pas de port hôte : Caddy route news.tiro.agency → conteneur:3000
+# Pas de port hôte : un reverse proxy (Caddy, Traefik...) route vers conteneur:3000
 # via le réseau docker partagé openclaw_web.
 # Prérequis : un fichier .env rempli (voir .env.example).
 # ═══════════════════════════════════════════════════════════

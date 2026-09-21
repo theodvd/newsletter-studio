@@ -37,3 +37,6 @@ next-env.d.ts
 
 # env docker (secrets)
 .env
+
+# Runbook personnel (adresses de serveur, identifiants d infra)
+RUNBOOK.local.md
