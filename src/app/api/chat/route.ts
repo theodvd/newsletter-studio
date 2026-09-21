@@ -1,13 +1,13 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { LIA_SYSTEM_PROMPT } from "@/lib/agent/system-prompt";
 import { exaSearch, exaFindSimilar } from "@/lib/tools/exa";
 import { validateSource } from "@/lib/tools/validate-source";
 import { encryptSecret } from "@/lib/crypto";
-import { updateUserWorkflow } from "@/lib/n8n";
+import { validateCron } from "@/lib/cron";
 import { costUsd } from "@/lib/pricing";
-import { monthlySpendUsd } from "@/lib/usage";
-import { getUserPlan, PLAN_LIMITS } from "@/lib/plan";
+import { checkSpendAllowed } from "@/lib/usage";
+import { LIMITS } from "@/lib/plan";
 
 export const maxDuration = 120;
 
@@ -111,6 +111,15 @@ type SaveConfigInput = {
 
 async function saveConfig(userId: string, userEmail: string, input: SaveConfigInput) {
   const supabase = createClient();
+
+  // Cadence : validée ici, sur TOUS les chemins (création comme édition).
+  // Le chemin d'édition poussait auparavant le cron dans le planificateur sans
+  // aucun contrôle : « * * * * * » passait, soit ~10 000 exécutions par semaine.
+  const cronCheck = validateCron(input.frequency_cron);
+  if (!cronCheck.ok) {
+    return { saved: false, error: cronCheck.reason };
+  }
+
   // Anti-spam : un digest email ne peut partir que vers l'adresse du compte.
   // Imposé ici (côté serveur), quoi que l'agent ou le client envoient.
   const destination = input.channel === "email" ? userEmail : input.destination || null;
@@ -127,14 +136,24 @@ async function saveConfig(userId: string, userEmail: string, input: SaveConfigIn
     updated_at: new Date().toISOString(),
   };
 
+  // Les écritures sur `subscriptions` passent par la clé service : les colonnes
+  // sensibles (destination, status) ne sont plus accessibles
+  // au client, sinon la règle « destination = email du compte » ci-dessus se
+  // contourne d'un appel PostgREST direct. La clé service ignorant le RLS, la
+  // propriété est vérifiée explicitement, à chaque requête.
+  const db = createAdminClient();
+
   let subscriptionId = input.subscription_id;
-  let workflowSynced = false;
   if (subscriptionId) {
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from("subscriptions")
-      .select("destination, status, n8n_workflow_id")
+      .select("destination, status")
       .eq("id", subscriptionId)
+      .eq("user_id", userId)
       .maybeSingle();
+    if (!existing) {
+      return { saved: false, error: "Digest not found." };
+    }
     // Une veille active reste active : on édite en direct, pas de retour en draft
     if (existing && existing.status !== "draft") {
       delete row.status;
@@ -146,28 +165,15 @@ async function saveConfig(userId: string, userEmail: string, input: SaveConfigIn
     ) {
       delete row.destination;
     }
-    const { error } = await supabase.from("subscriptions").update(row).eq("id", subscriptionId);
+    const { error } = await db
+      .from("subscriptions")
+      .update(row)
+      .eq("id", subscriptionId)
+      .eq("user_id", userId);
     if (error) throw new Error(error.message);
 
-    // Veille en ligne : synchronise le workflow fin n8n (nom + cron)
-    if (existing?.n8n_workflow_id) {
-      try {
-        await updateUserWorkflow(existing.n8n_workflow_id, {
-          name: input.name,
-          cron: input.frequency_cron,
-          subscriptionId,
-        });
-        workflowSynced = true;
-      } catch (e) {
-        return {
-          subscription_id: subscriptionId,
-          saved: true,
-          warning: `Config saved, but the n8n schedule could not be updated: ${e instanceof Error ? e.message : "unknown error"}`,
-        };
-      }
-    }
   } else {
-    const { data, error } = await supabase.from("subscriptions").insert(row).select("id").single();
+    const { data, error } = await db.from("subscriptions").insert(row).select("id").single();
     if (error) throw new Error(error.message);
     subscriptionId = data.id;
   }
@@ -189,7 +195,7 @@ async function saveConfig(userId: string, userEmail: string, input: SaveConfigIn
     );
     if (error) throw new Error(error.message);
   }
-  return { subscription_id: subscriptionId, saved: true, workflow_schedule_synced: workflowSynced };
+  return { subscription_id: subscriptionId, saved: true };
 }
 
 /** Libellé lisible pour la pastille de statut dans le fil de chat. */
@@ -260,22 +266,15 @@ export async function POST(request: Request) {
     );
   }
 
-  // Lit le plan et adapte le plafond en conséquence
-  const plan = await getUserPlan(supabase);
-  const limits = PLAN_LIMITS[plan];
+  const limits = LIMITS;
 
-  // Plafond mensuel : on bloque AVANT d'appeler Claude
-  const spend = await monthlySpendUsd(supabase);
-  if (spend >= limits.monthlyCapUsd) {
-    const upgradeHint =
-      plan === "free"
-        ? " Upgrade to Pro for a higher limit."
-        : "";
+  // L'onboarding tourne sur la clé de l'hébergeur : on borne AVANT d'appeler
+  // le modèle, par utilisateur ET globalement. Les éditions, elles, tournent
+  // sur la clé de l'utilisateur et ne sont pas concernées.
+  const verdict = await checkSpendAllowed(supabase);
+  if (!verdict.allowed) {
     return new Response(
-      `data: ${JSON.stringify({
-        type: "error",
-        message: `You've reached your monthly usage cap ($${limits.monthlyCapUsd.toFixed(2)}).${upgradeHint} It resets on the 1st; your running digests keep going until then.`,
-      })}\n\n`,
+      `data: ${JSON.stringify({ type: "error", message: verdict.reason })}\n\n`,
       { status: 429, headers: { "Content-Type": "text/event-stream" } }
     );
   }
@@ -302,14 +301,14 @@ export async function POST(request: Request) {
       configContext =
         `\n\nConfiguration actuelle de la veille (status: ${current.status}` +
         (current.status === "active"
-          ? " (VEILLE EN LIGNE en cours d'édition : chaque save_subscription_config s'applique IMMÉDIATEMENT, y compris la mise à jour du cron n8n. Confirme clairement chaque changement appliqué.)"
+          ? " (VEILLE EN LIGNE en cours d'édition : chaque save_subscription_config s'applique IMMÉDIATEMENT, y compris la fréquence d'envoi. Confirme clairement chaque changement appliqué.)"
           : "") +
         `) :\n${JSON.stringify(masked)}`;
     }
   }
 
-  // Section dynamique injectée dans le system prompt : plan + limites
-  const planContext = `\n\n## Plan de l'utilisateur\nPlan actuel : **${limits.label}**\n- Veilles actives max : ${limits.maxActiveDigests}\n- Envois max/semaine : ${limits.maxRunsPerWeek} (${limits.maxRunsPerWeek >= 14 ? "jusqu'à 2/jour" : "1/jour max"})\n- Sources max (quotidien) : ${limits.maxSourcesDaily} | (hebdo/bi-hebdo) : ${limits.maxSourcesWeekly}\n- Profondeur d'analyse : ${limits.depth}\n\nRègle : configure DANS ces limites. Si l'utilisateur demande plus (ex: 3 veilles sur Free, 2x/jour sur Free), propose-lui le plan Pro sans être insistant, une seule mention suffit.`;
+  // Section dynamique injectée dans le system prompt : les bornes du service
+  const planContext = `\n\n## Limites du service\n- Veilles actives max : ${limits.maxActiveDigests}\n- Sources max par veille : ${limits.maxSources}\n- Envois max : 2 par jour (14 par semaine)\n\nIl n'y a pas de plan payant : chaque utilisateur branche sa propre clé API, et ses éditions tournent dessus. Configure DANS ces limites, sans jamais proposer d'abonnement.`;
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const conversation: Anthropic.MessageParam[] = [...messages];
@@ -483,9 +482,12 @@ export async function POST(request: Request) {
           }
         }
 
-        // Log de la dépense réelle du tour
+        // Log de la dépense réelle du tour.
+        // Écrit avec la clé service : le compteur ne doit pas être alimentable
+        // par le compte qu'il mesure, sinon une ligne à cost_usd négatif annule
+        // définitivement le plafond.
         if (usage.input_tokens + usage.output_tokens > 0) {
-          await supabase.from("usage_log").insert({
+          await createAdminClient().from("usage_log").insert({
             user_id: user.id,
             kind: "chat",
             input_tokens: usage.input_tokens,

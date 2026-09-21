@@ -1,77 +1,47 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-
 /**
- * Plans Free / Pro.
- * Axe de monétisation : fréquence de livraison + profondeur d'analyse
- * (pas le nombre de veilles, personne ne veut 10 newsletters).
+ * Limites de service.
  *
- * Free : 1 veille active, au choix hebdomadaire (jusqu'à 8 sources)
- *        ou quotidienne limitée (1 envoi/jour, jusqu'à 5 sources).
- * Pro  : jusqu'à 3 veilles, jusqu'à 2 envois/jour, 12 sources,
- *        analyse approfondie, plafond d'usage relevé.
+ * Il n'y a plus de plan payant. Le modèle est devenu : chacun branche sa
+ * propre clé de fournisseur, ses éditions tournent dessus, et le projet ne
+ * coûte rien à héberger. Un plan Pro n'aurait rien eu à vendre.
+ *
+ * Ce qui reste ici n'est donc pas commercial mais défensif : des bornes qui
+ * protègent l'hébergeur et les sites sources. La seule dépense restant à la
+ * charge de l'hébergeur est la conversation d'onboarding avec Lia, offerte
+ * pour que l'on puisse essayer le produit avant de sortir une clé.
  */
 
-export type Plan = "free" | "pro";
-
-export type PlanLimits = {
-  label: string;
+export type Limits = {
+  /** Veilles actives simultanées par utilisateur. */
   maxActiveDigests: number;
-  /** Envois max par semaine (7 = 1/jour, 14 = 2/jour) */
-  maxRunsPerWeek: number;
-  /** Sources max pour une veille quotidienne */
-  maxSourcesDaily: number;
-  /** Sources max pour une veille hebdo/bi-hebdo */
-  maxSourcesWeekly: number;
-  /** Plafond de dépense API par mois calendaire (USD) */
-  monthlyCapUsd: number;
-  /** Profondeur des résumés produits par le moteur */
-  depth: "standard" | "deep";
+  /** Sources par veille : au-delà, le digest devient illisible et lent. */
+  maxSources: number;
+  /**
+   * Plafonds de dépense HEBDOMADAIRES sur la clé de l'HÉBERGEUR, c'est-à-dire
+   * l'onboarding uniquement (les éditions sont payées par l'utilisateur).
+   *
+   * Le plafond global est le garde-fou qui compte : les inscriptions étant
+   * ouvertes et non plafonnées en nombre, c'est la seule borne entre une
+   * vague de nouveaux comptes et une facture non bornée. Quand il est
+   * atteint, l'onboarding est suspendu jusqu'au lundi suivant, et les
+   * veilles déjà en route continuent puisqu'elles ne coûtent rien à
+   * l'hébergeur.
+   */
+  weeklyCapUsdPerUser: number;
+  weeklyCapUsdGlobal: number;
 };
 
-export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
-  free: {
-    label: "Free",
-    maxActiveDigests: 1,
-    maxRunsPerWeek: 7,
-    maxSourcesDaily: 5,
-    maxSourcesWeekly: 8,
-    monthlyCapUsd: 1.5,
-    depth: "standard",
-  },
-  pro: {
-    label: "Pro",
-    maxActiveDigests: 3,
-    maxRunsPerWeek: 14,
-    maxSourcesDaily: 12,
-    maxSourcesWeekly: 12,
-    monthlyCapUsd: 10,
-    depth: "deep",
-  },
+/** Lecture d'un nombre depuis l'environnement, avec valeur de repli. */
+function envNumber(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+export const LIMITS: Limits = {
+  maxActiveDigests: envNumber("LIMIT_ACTIVE_DIGESTS", 3),
+  maxSources: envNumber("LIMIT_SOURCES_PER_DIGEST", 12),
+  weeklyCapUsdPerUser: envNumber("WEEKLY_CAP_USD_PER_USER", 1),
+  weeklyCapUsdGlobal: envNumber("WEEKLY_CAP_USD_GLOBAL", 10),
 };
-
-/** Prix affichés (la facturation Stripe viendra plus tard). */
-export const PRO_PRICE_MONTHLY_EUR = 9;
-export const PRO_PRICE_YEARLY_EUR = 79;
-
-/** Une veille est "quotidienne" si elle part au moins 5 fois par semaine. */
-export function isDailyCadence(runsPerWeek: number): boolean {
-  return runsPerWeek >= 5;
-}
-
-/** Sources max autorisées pour un plan selon la cadence. */
-export function maxSourcesFor(limits: PlanLimits, runsPerWeek: number): number {
-  return isDailyCadence(runsPerWeek) ? limits.maxSourcesDaily : limits.maxSourcesWeekly;
-}
-
-/**
- * Lit le plan de l'utilisateur connecté (profiles.plan, RLS).
- * Retombe sur "free" si la colonne ou la ligne manque (déploiement progressif).
- */
-export async function getUserPlan(supabase: SupabaseClient): Promise<Plan> {
-  try {
-    const { data } = await supabase.from("profiles").select("plan").maybeSingle();
-    return data?.plan === "pro" ? "pro" : "free";
-  } catch {
-    return "free";
-  }
-}

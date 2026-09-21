@@ -1,19 +1,17 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createUserWorkflow } from "@/lib/n8n";
-import { runsPerWeek } from "@/lib/pricing";
-import { monthlySpendUsd, projectedMonthlyCostUsd } from "@/lib/usage";
-import { PLAN_LIMITS, getUserPlan, maxSourcesFor } from "@/lib/plan";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
+import { validateCron } from "@/lib/cron";
+import { LIMITS } from "@/lib/plan";
 
 /**
- * Provisioning : à la validation du brouillon, crée le workflow fin
- * dans n8n (cron du user → moteur partagé) et passe la veille en "active".
+ * Activation : à la validation du brouillon, passe la veille en "active".
+ * Le moteur (tick dans ce dépôt) prend alors le relais selon son cron.
  *
- * Gating plan (dans l'ordre) :
- *  1. Nombre de veilles actives (maxActiveDigests)
- *  2. Cadence (maxRunsPerWeek)
- *  3. Nombre de sources (maxSourcesDaily / maxSourcesWeekly selon cadence)
- *  4. Plafond mensuel projeté (monthlyCapUsd)
+ * Contrôles (défensifs, pas commerciaux : il n'y a plus de plan payant) :
+ *  1. Forme du cron et cadence maximale
+ *  2. Nombre de veilles actives
+ *  3. Nombre de sources
+ *  4. Présence d'une clé API : sans elle, rien ne pourrait être produit
  */
 export async function POST(request: Request) {
   const supabase = createClient();
@@ -27,14 +25,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "subscriptionId manquant" }, { status: 400 });
   }
 
-  // Récupère le plan de l'utilisateur et ses limites
-  const plan = await getUserPlan(supabase);
-  const limits = PLAN_LIMITS[plan];
+  const limits = LIMITS;
 
   // RLS : ne renvoie la subscription que si elle appartient au user
   const { data: sub, error } = await supabase
     .from("subscriptions")
-    .select("id, name, frequency_cron, status, n8n_workflow_id, channel, destination, sources(id)")
+    .select("id, name, frequency_cron, status, channel, destination, sources(id)")
     .eq("id", subscriptionId)
     .maybeSingle();
 
@@ -58,99 +54,64 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  if (sub.n8n_workflow_id) {
-    return NextResponse.json(
-      { error: "This digest already has a workflow.", workflowId: sub.n8n_workflow_id },
-      { status: 409 }
-    );
+  if (sub.status === "active") {
+    return NextResponse.json({ error: "This digest is already active." }, { status: 409 });
   }
 
-  // Récupère les veilles actives (hors celle en cours de provisioning)
+  // --- 1. Forme du cron et cadence (validateCron plafonne à 14 envois/semaine) ---
+  const cronCheck = validateCron(sub.frequency_cron);
+  if (!cronCheck.ok) {
+    return NextResponse.json({ error: cronCheck.reason }, { status: 400 });
+  }
+
+  // --- 2. Nombre de veilles actives ---
   const { data: actives } = await supabase
     .from("subscriptions")
-    .select("frequency_cron")
+    .select("id")
     .eq("status", "active");
-
-  // --- Gate 1 : nombre de veilles actives ---
-  const activeCount = actives?.length ?? 0;
-  if (activeCount >= limits.maxActiveDigests) {
+  if ((actives?.length ?? 0) >= limits.maxActiveDigests) {
     return NextResponse.json(
       {
-        error:
-          plan === "free"
-            ? `Free plan allows ${limits.maxActiveDigests} active digest. Pause or edit your existing digest, or upgrade to Pro to run up to ${PLAN_LIMITS.pro.maxActiveDigests} at once.`
-            : `You've reached the limit of ${limits.maxActiveDigests} active digests.`,
+        error: `You already have ${limits.maxActiveDigests} active digests. Pause one before starting another.`,
       },
       { status: 403 }
     );
   }
 
-  // --- Gate 2 : cadence (runs/semaine) ---
-  const runs = runsPerWeek(sub.frequency_cron);
-  if (runs > limits.maxRunsPerWeek) {
-    return NextResponse.json(
-      {
-        error:
-          `This schedule runs ~${runs}×/week, but your ${limits.label} plan allows up to ${limits.maxRunsPerWeek}×/week. ` +
-          (plan === "free"
-            ? "Upgrade to Pro for daily or twice-daily delivery."
-            : "Reduce the delivery frequency to continue."),
-      },
-      { status: 403 }
-    );
-  }
-
-  // --- Gate 3 : nombre de sources ---
+  // --- 3. Nombre de sources ---
   const sourceCount = sub.sources?.length ?? 0;
-  const maxSources = maxSourcesFor(limits, runs);
-  if (sourceCount > maxSources) {
+  if (sourceCount > limits.maxSources) {
     return NextResponse.json(
       {
-        error:
-          `This digest has ${sourceCount} sources, but your ${limits.label} plan allows up to ${maxSources} for this cadence. ` +
-          (plan === "free"
-            ? "Upgrade to Pro to add up to 12 sources."
-            : "Remove some sources to continue."),
+        error: `This digest has ${sourceCount} sources; the maximum is ${limits.maxSources}. Remove a few to keep the edition readable.`,
       },
       { status: 403 }
     );
   }
 
-  // --- Gate 4 : plafond mensuel projeté ---
-  const crons = [...(actives ?? []).map((a) => a.frequency_cron), sub.frequency_cron];
-  const projected = projectedMonthlyCostUsd(crons, runsPerWeek);
-  const spent = await monthlySpendUsd(supabase);
-  const cap = limits.monthlyCapUsd;
-  if (spent + projected > cap) {
+  // --- 4. Clé API : sans elle, le moteur ne produirait rien ---
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("llm_key_hint")
+    .eq("id", user.id)
+    .maybeSingle();
+  if (!profile?.llm_key_hint) {
     return NextResponse.json(
-      {
-        error:
-          `This schedule would exceed your $${cap.toFixed(2)}/month budget (projected ~$${(spent + projected).toFixed(2)}). ` +
-          (plan === "free"
-            ? "Try a lower frequency, pause another digest, or upgrade to Pro for a higher budget."
-            : "Try a lower frequency or pause another digest."),
-      },
+      { error: "Connect your API key first: your editions run on your own key." },
       { status: 403 }
     );
   }
 
-  try {
-    const workflowId = await createUserWorkflow({
-      name: sub.name,
-      cron: sub.frequency_cron,
-      subscriptionId: sub.id,
-    });
+  // `status` est verrouillé côté base : écriture par la clé service, avec
+  // filtre de propriété explicite (le RLS ne s'applique plus avec cette clé).
+  const { error: activationError } = await createAdminClient()
+    .from("subscriptions")
+    .update({ status: "active", updated_at: new Date().toISOString() })
+    .eq("id", sub.id)
+    .eq("user_id", user.id);
 
-    await supabase
-      .from("subscriptions")
-      .update({ status: "active", n8n_workflow_id: workflowId, updated_at: new Date().toISOString() })
-      .eq("id", sub.id);
-
-    return NextResponse.json({ ok: true, workflowId });
-  } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Erreur n8n" },
-      { status: 502 }
-    );
+  if (activationError) {
+    return NextResponse.json({ error: activationError.message }, { status: 500 });
   }
+  return NextResponse.json({ ok: true, status: "active" });
 }
