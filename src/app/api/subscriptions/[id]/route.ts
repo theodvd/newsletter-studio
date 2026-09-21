@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { setWorkflowActive, deleteWorkflow } from "@/lib/n8n";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 /**
  * Actions sur une veille :
- * PATCH { action: "pause" | "resume" } : désactive/réactive le workflow n8n
- * DELETE : supprime le workflow n8n puis la veille (cascade sur sources/deliveries)
+ * PATCH { action: "pause" | "resume" } : bascule le statut
+ * DELETE : supprime la veille (cascade sur sources, deliveries, delivered_items)
+ *
+ * Depuis le passage du moteur dans le dépôt, il n'y a plus de workflow n8n par
+ * utilisateur à synchroniser : le statut en base fait foi, et le tick du moteur
+ * ne considère que les veilles « active ».
  */
 
 async function getOwnedSubscription(id: string) {
@@ -13,17 +16,18 @@ async function getOwnedSubscription(id: string) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { supabase, sub: null, unauthorized: true };
+  if (!user) return { sub: null, userId: null, unauthorized: true };
+  // Lecture via le client à session : le RLS garantit déjà la propriété ici.
   const { data: sub } = await supabase
     .from("subscriptions")
-    .select("id, status, n8n_workflow_id")
+    .select("id, status")
     .eq("id", id)
     .maybeSingle();
-  return { supabase, sub, unauthorized: false };
+  return { sub, userId: user.id, unauthorized: false };
 }
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const { supabase, sub, unauthorized } = await getOwnedSubscription(params.id);
+  const { sub, userId, unauthorized } = await getOwnedSubscription(params.id);
   if (unauthorized) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   if (!sub) return NextResponse.json({ error: "Veille introuvable" }, { status: 404 });
 
@@ -32,33 +36,32 @@ export async function PATCH(request: Request, { params }: { params: { id: string
     return NextResponse.json({ error: "Action inconnue" }, { status: 400 });
   }
 
-  try {
-    if (sub.n8n_workflow_id) {
-      await setWorkflowActive(sub.n8n_workflow_id, action === "resume");
-    }
-    const status = action === "resume" ? "active" : "paused";
-    await supabase
-      .from("subscriptions")
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq("id", sub.id);
-    return NextResponse.json({ ok: true, status });
-  } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur n8n" }, { status: 502 });
-  }
+  const status = action === "resume" ? "active" : "paused";
+
+  // `status` est verrouillé côté base (migration 0003) : l'écriture passe par
+  // la clé service, avec filtre de propriété explicite puisque le RLS ne
+  // s'applique plus.
+  const { error } = await createAdminClient()
+    .from("subscriptions")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", sub.id)
+    .eq("user_id", userId);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, status });
 }
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
-  const { supabase, sub, unauthorized } = await getOwnedSubscription(params.id);
+  const { sub, userId, unauthorized } = await getOwnedSubscription(params.id);
   if (unauthorized) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   if (!sub) return NextResponse.json({ error: "Veille introuvable" }, { status: 404 });
 
-  try {
-    if (sub.n8n_workflow_id) {
-      await deleteWorkflow(sub.n8n_workflow_id);
-    }
-    await supabase.from("subscriptions").delete().eq("id", sub.id);
-    return NextResponse.json({ ok: true });
-  } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Erreur n8n" }, { status: 502 });
-  }
+  const { error } = await createAdminClient()
+    .from("subscriptions")
+    .delete()
+    .eq("id", sub.id)
+    .eq("user_id", userId);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
 }

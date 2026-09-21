@@ -5,6 +5,8 @@
  * 3. Sinon → source de type "scrape" (la page sera lue telle quelle par le moteur)
  */
 
+import { safeFetchText } from "./safe-fetch";
+
 const FEED_PATHS = ["/feed", "/rss", "/feed.xml", "/rss.xml", "/atom.xml", "/index.xml"];
 
 type SourceValidation = {
@@ -17,21 +19,14 @@ type SourceValidation = {
   note: string;
 };
 
+/**
+ * Toute récupération passe par la garde anti-SSRF : l'URL vient de
+ * l'utilisateur, et ce conteneur voit le réseau Docker interne.
+ * Centraliser ici couvre les trois points d'appel (URL initiale,
+ * autodiscovery, chemins standards).
+ */
 async function fetchText(url: string): Promise<{ ok: boolean; text: string; contentType: string }> {
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; LiaVeille/1.0)" },
-      signal: AbortSignal.timeout(12000),
-      redirect: "follow",
-    });
-    return {
-      ok: res.ok,
-      text: await res.text(),
-      contentType: res.headers.get("content-type") || "",
-    };
-  } catch {
-    return { ok: false, text: "", contentType: "" };
-  }
+  return safeFetchText(url);
 }
 
 function looksLikeFeed(text: string): boolean {

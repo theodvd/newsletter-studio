@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 
 /**
  * Retour du flow OAuth Slack : échange le code contre l'URL du webhook
@@ -42,15 +42,18 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${base}/onboarding?slack=error`);
   }
 
-  // RLS : ne met à jour la veille que si elle appartient à l'utilisateur
-  const { error } = await supabase
+  // `destination` est verrouillée côté base (c'est elle qui adresse l'envoi) :
+  // écriture par la clé service, propriété vérifiée explicitement ici puisque
+  // le RLS ne s'applique plus.
+  const { error } = await createAdminClient()
     .from("subscriptions")
     .update({
       destination: data.incoming_webhook.url,
       destination_label: `${data.incoming_webhook.channel} · ${data.team?.name ?? "Slack"}`,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", subscriptionId);
+    .eq("id", subscriptionId)
+    .eq("user_id", user.id);
 
   if (error) return NextResponse.redirect(`${base}/onboarding?slack=error`);
   return NextResponse.redirect(`${base}/onboarding?slack=connected`);
