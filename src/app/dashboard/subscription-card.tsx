@@ -8,7 +8,7 @@ import { describeCron } from "@/lib/cron";
 
 /**
  * One digest card: status, schedule, last 3 deliveries,
- * pause/resume/delete actions (kept in sync with n8n).
+ * pause/resume/delete actions.
  */
 
 type Delivery = { id: string; sent_at: string; status: string };
@@ -21,7 +21,6 @@ type Subscription = {
   destination_label: string | null;
   frequency_cron: string;
   status: string;
-  n8n_workflow_id: string | null;
   sources: { id: string }[];
   deliveries: Delivery[];
 };
@@ -36,7 +35,7 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
     if (busy) return;
     if (
       action === "delete" &&
-      !confirm(`Delete "${subscription.name}" and its n8n workflow? This cannot be undone.`)
+      !confirm(`Delete "${subscription.name}"? This cannot be undone.`)
     ) {
       return;
     }
