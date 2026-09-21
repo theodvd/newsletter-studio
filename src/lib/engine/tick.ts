@@ -7,6 +7,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { isDue } from "./due";
 import { loadActiveSubscriptions } from "./config";
 import { runSubscription } from "./run";
+import { purgeOldFlags } from "@/lib/abuse/report";
 import type { RunOutcome } from "./types";
 
 /** Les tentatives des 7 derniers jours suffisent à décider de ce qui est dû. */
@@ -57,6 +58,13 @@ export async function runTick(now: Date = new Date()): Promise<TickReport> {
       lastSentAt: attempts.get(sub.id) ?? null,
     });
     if (due) dueIds.push(sub.id);
+  }
+
+  // Entretien quotidien : purge des conversations signalées expirées. Une fois
+  // par jour suffit, et le tick est le seul rendez-vous régulier du serveur.
+  if (now.getUTCHours() === 3 && now.getUTCMinutes() < 5) {
+    const purged = await purgeOldFlags();
+    if (purged > 0) console.log(`[engine] purge : ${purged} conversation(s) signalée(s) expirée(s)`);
   }
 
   const outcomes: RunOutcome[] = [];

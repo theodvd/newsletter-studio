@@ -7,6 +7,8 @@ import { encryptSecret } from "@/lib/crypto";
 import { validateCron } from "@/lib/cron";
 import { costUsd } from "@/lib/pricing";
 import { checkSpendAllowed } from "@/lib/usage";
+import { detectAbuse } from "@/lib/abuse/detect";
+import { reportAbuse } from "@/lib/abuse/report";
 import { LIMITS } from "@/lib/plan";
 
 export const maxDuration = 120;
@@ -280,6 +282,21 @@ export async function POST(request: Request) {
   }
 
   const { messages, subscriptionId: knownSubscriptionId } = await request.json();
+
+  // Surveillance des conversations anormales : détournement de l'agent,
+  // recherche de secrets, sondage du réseau interne. On n'enregistre la
+  // conversation QUE si elle est signalée, et on ne bloque pas : un faux
+  // positif ne doit pas empêcher quelqu'un de configurer sa veille. Le
+  // signalement part en arrière-plan pour ne pas retarder la réponse.
+  const abuse = detectAbuse(Array.isArray(messages) ? messages : []);
+  if (abuse.flagged) {
+    void reportAbuse({
+      userId: user.id,
+      email: user.email ?? "inconnu",
+      verdict: abuse,
+      messages: Array.isArray(messages) ? messages : [],
+    });
+  }
 
   // Contexte de la config existante (mode édition d'une veille active comprise)
   let configContext = "";
