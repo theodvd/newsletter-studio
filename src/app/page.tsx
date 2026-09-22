@@ -4,7 +4,7 @@ import { Reveal, Stagger, StaggerItem } from "@/components/reveal";
 import { CrystalBackdrop } from "@/components/crystal-backdrop";
 
 /**
- * Home: editorial hero + two actions (new digest / my digests) + la promesse BYOK.
+ * Home: editorial hero + two actions (new digest / my digests).
  */
 export default async function HomePage() {
   const supabase = createClient();
@@ -75,27 +75,6 @@ export default async function HomePage() {
           </StaggerItem>
         </Stagger>
 
-        {/* ------------------------------------------------------------------ */}
-        {/*  Section Pricing                                                     */}
-        {/* ------------------------------------------------------------------ */}
-        <section id="pricing" className="mt-28">
-          <Reveal>
-            <p className="font-display text-xs uppercase tracking-[0.3em] text-accent/70">
-              Pricing
-            </p>
-            <h2 className="font-display mt-3 text-3xl font-semibold tracking-tight text-ice">
-              Free, and open source
-            </h2>
-            <p className="mt-4 max-w-xl text-base leading-relaxed text-slate-400">
-              There is no plan to buy. You connect your own API key, your editions run on it, and
-              you pay your provider directly for what they cost: a few cents a month for a daily
-              digest. Setting up a digest with Lia is on the house.
-            </p>
-            <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-500">
-              The whole thing is open source: read it, self-host it, change what you want.
-            </p>
-          </Reveal>
-        </section>
       </div>
     </main>
   );
