@@ -8,7 +8,7 @@ import { CrystalBackdrop } from "@/components/crystal-backdrop";
 import { Turnstile } from "@/components/turnstile";
 
 /**
- * Page de connexion : code à 6 chiffres envoyé par email (verifyOtp),
+ * Page de connexion : code numérique envoyé par email (verifyOtp),
  * avec le magic link en secours dans le même email. Inscription ouverte
  * (le compte est créé à la première connexion réussie).
  */
@@ -22,6 +22,10 @@ export default function LoginPage() {
 }
 
 const ease = [0.2, 0.8, 0.2, 1] as const;
+
+/** Bornes du code email. Supabase accepte de 6 à 10 chiffres selon le projet. */
+const CODE_MIN = 6;
+const CODE_MAX = 10;
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -45,10 +49,18 @@ function LoginForm() {
     return () => clearTimeout(t);
   }, [cooldown]);
 
-  /** Connexion par le code à 6 chiffres, marche dans n'importe quel navigateur */
+  /**
+   * Connexion par le code reçu par email.
+   *
+   * La longueur n'est PAS codée en dur : Supabase peut envoyer 6, 8 ou 10
+   * chiffres selon le réglage du projet, et un `maxLength` trop court tronque
+   * silencieusement la saisie, ce qui rend la connexion impossible sans que
+   * rien n'indique pourquoi. On accepte donc une plage, et c'est Supabase qui
+   * tranche à la vérification.
+   */
   async function handleVerifyCode(e: React.FormEvent) {
     e.preventDefault();
-    if (code.trim().length < 6 || verifying) return;
+    if (code.trim().length < CODE_MIN || verifying) return;
     setVerifying(true);
     setCodeError(null);
     const supabase = createClient();
@@ -137,7 +149,7 @@ function LoginForm() {
         {authFailed && (
           <p className="mb-5 rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
             That link expired or was opened in a different browser. Request a new
-            email and use the 6-digit code instead: it works anywhere.
+            email and use the code instead: it works anywhere.
           </p>
         )}
 
@@ -150,7 +162,7 @@ function LoginForm() {
           >
             <p className="font-display text-center font-medium text-white">Check your inbox</p>
             <p className="mt-2 text-center text-sm leading-relaxed text-slate-400">
-              We sent a <strong>6-digit code</strong> to{" "}
+              We sent a <strong>sign-in code</strong> to{" "}
               <strong className="text-ice">{email}</strong>. Enter it below to sign in.
             </p>
 
@@ -158,15 +170,15 @@ function LoginForm() {
               <input
                 inputMode="numeric"
                 autoComplete="one-time-code"
-                maxLength={6}
+                maxLength={CODE_MAX}
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="123456"
+                placeholder="Your code"
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-center font-display text-lg tracking-[0.4em] text-white placeholder-slate-700 outline-none transition-colors focus:border-accent/60"
               />
               <button
                 type="submit"
-                disabled={code.length < 6 || verifying}
+                disabled={code.length < CODE_MIN || verifying}
                 className="rounded-xl bg-gradient-to-r from-sky-400/90 to-cyan-300/90 px-5 font-display text-sm font-semibold text-slate-950 disabled:opacity-40"
               >
                 {verifying ? "…" : "Sign in"}
@@ -237,7 +249,7 @@ function LoginForm() {
         transition={{ duration: 1, delay: 0.6 }}
         className="relative z-10 mt-10 text-xs text-slate-600"
       >
-        No password: we email you a 6-digit code. You&apos;ll stay signed in.
+        No password: we email you a sign-in code. You&apos;ll stay signed in.
       </motion.p>
     </main>
   );
