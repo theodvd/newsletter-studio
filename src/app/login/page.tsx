@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { CrystalBackdrop } from "@/components/crystal-backdrop";
+import { Turnstile } from "@/components/turnstile";
 
 /**
  * Page de connexion : code à 6 chiffres envoyé par email (verifyOtp),
@@ -30,6 +31,10 @@ function LoginForm() {
   const [codeError, setCodeError] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  // Jeton anti-bot. Null tant que le visiteur n'a pas passé la vérification,
+  // ou après usage : un jeton Turnstile ne sert qu'une fois.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaReset, setCaptchaReset] = useState(0);
   const searchParams = useSearchParams();
   const authFailed = searchParams.get("error") === "auth";
 
@@ -71,16 +76,24 @@ function LoginForm() {
       email,
       options: {
         emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/auth/callback`,
+        // Ignoré tant que le captcha n'est pas activé côté Supabase : on peut
+        // donc déployer ceci avant de l'exiger, sans casser les connexions.
+        ...(captchaToken ? { captchaToken } : {}),
       },
     });
+    // Le jeton vient d'être consommé, qu'il ait servi ou non.
+    setCaptchaToken(null);
+    setCaptchaReset((n) => n + 1);
     if (error) {
       // Trigger de capacité (30 comptes) ou throttle 60s entre deux demandes
       setErrorMsg(
         /database error/i.test(error.message)
-          ? "We're at capacity for this beta (30 testers). Ask Theo for a seat."
+          ? "We're at capacity right now. Try again later."
           : /rate limit|security purposes|seconds/i.test(error.message)
             ? "A code was just sent. Wait a minute before requesting another one."
-            : "Could not send the code. Try again."
+            : /captcha/i.test(error.message)
+              ? "The anti-bot check did not pass. Wait for it to finish, then try again."
+              : "Could not send the code. Try again."
       );
       setStatus("error");
     } else {
@@ -161,6 +174,11 @@ function LoginForm() {
             </form>
             {codeError && <p className="mt-2 text-sm text-red-400">{codeError}</p>}
 
+            {/* Le renvoi d'email repasse par signInWithOtp : il lui faut donc
+                son propre jeton anti-bot, sans quoi il échouerait une fois le
+                captcha exigé côté Supabase. */}
+            {cooldown <= 0 && <Turnstile onToken={setCaptchaToken} resetSignal={captchaReset} />}
+
             <p className="mt-5 text-center text-xs text-slate-500">
               Nothing received? Check spam, and in Gmail, make sure you open the{" "}
               <strong>newest</strong> email in the thread.{" "}
@@ -200,6 +218,7 @@ function LoginForm() {
                 className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-base font-normal normal-case tracking-normal text-white placeholder-slate-600 outline-none transition-colors focus:border-accent/60 focus:bg-white/[0.07]"
               />
             </label>
+            <Turnstile onToken={setCaptchaToken} resetSignal={captchaReset} />
             <button
               type="submit"
               disabled={status === "sending"}
