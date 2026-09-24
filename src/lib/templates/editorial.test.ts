@@ -119,6 +119,23 @@ describe("editorialTemplate.validate", () => {
   });
 });
 
+describe("editorialTemplate.validate : un article cité une seule fois", () => {
+  it("retire du Signal une brève qui reprend l'article du Chiffre (cas réel du 24/09)", () => {
+    const json = validJson();
+    json.signal[0].url = "https://www.example.com/number?utm_source=x";
+    const edition = editorialTemplate.validate(json, ctx(FULL_SECTIONS));
+    expect(edition.signal).toHaveLength(1);
+    expect(edition.signal?.[0].title).toBe("Signal 2");
+  });
+
+  it("supprime la section Signal si toutes ses brèves sont des doublons", () => {
+    const json = validJson();
+    json.signal = [{ tag: "tech", title: "Doublon", summary: "s", url: "https://example.com/1", source: "s" }];
+    const edition = editorialTemplate.validate(json, ctx(FULL_SECTIONS));
+    expect(edition.signal).toBeUndefined();
+  });
+});
+
 describe("editorialTemplate.maxOutputTokens", () => {
   it("borne le plafond entre 4000 et 12000, avec une marge de 1,8 sur l'attendu", () => {
     expect(editorialTemplate.maxOutputTokens(ctx(["radar"]))).toBeGreaterThanOrEqual(4000);

@@ -146,8 +146,12 @@ export function looksLikeFeed(body: string): boolean {
   return /<(rss|feed|rdf)[\s>]/i.test(body.substring(0, 2000));
 }
 
+/** Formats d'image mal pris en charge par les clients mail (Gmail, Outlook). */
+export const UNSUPPORTED_EMAIL_IMAGE = /\.avif(?:[?#]|$)/i;
+
 function normalizeImageUrl(raw: string): string | null {
   const decoded = raw.replace(/&amp;/g, "&").trim();
+  if (UNSUPPORTED_EMAIL_IMAGE.test(decoded)) return null;
   return /^https:\/\//i.test(decoded) ? decoded : null;
 }
 

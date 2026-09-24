@@ -107,3 +107,17 @@ describe("enrichImages", () => {
     expect(edition.radar?.[0].image_url).toBeUndefined();
   });
 });
+
+describe("extractOgImage : formats mal affichés par les clients mail", () => {
+  it("écarte une image AVIF et prend la candidate suivante", () => {
+    const html =
+      '<meta property="og:image" content="https://cdn.example.com/photo.avif">' +
+      '<meta name="twitter:image" content="https://cdn.example.com/photo.jpg">';
+    expect(extractOgImage(html, "https://example.com/article")).toBe("https://cdn.example.com/photo.jpg");
+  });
+
+  it("renvoie null si la seule image est en AVIF", () => {
+    const html = '<meta property="og:image" content="https://cdn.example.com/photo.avif?w=1200">';
+    expect(extractOgImage(html, "https://example.com/article")).toBeNull();
+  });
+});

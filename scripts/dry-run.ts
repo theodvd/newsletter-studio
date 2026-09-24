@@ -95,6 +95,12 @@ async function main(): Promise<void> {
   const outPath = path.join(outDir, `dry-run-${subscriptionId}.html`);
   fs.writeFileSync(outPath, outcome.preview.html, "utf8");
   console.log(`Aperçu écrit : ${outPath} (${outcome.itemsSent ?? 0} articles cités)`);
+  const { costUsd } = await import("../src/lib/pricing");
+  const inTok = outcome.inputTokens ?? 0;
+  const outTok = outcome.outputTokens ?? 0;
+  console.log(
+    `Tokens : ${inTok} en entrée, ${outTok} en sortie, soit environ $${costUsd(inTok, outTok).toFixed(3)} au tarif Sonnet.`
+  );
 }
 
 main().catch((e) => {

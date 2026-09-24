@@ -337,10 +337,46 @@ function validate(parsed: unknown, ctx: SpecContext): Edition {
   if (active.includes("number")) edition.number = sanitizeNumber(clean.number);
   if (active.includes("pick")) edition.pick = sanitizePick(clean.pick);
 
+  dropRepeatedSignals(edition);
+
   const outro = strOpt(clean, "outro");
   if (outro) edition.outro = outro;
 
   return edition;
+}
+
+/** Clé de comparaison d'URL, volontairement simple : schéma, www, paramètres et slash final ignorés. */
+function urlKey(url: string | undefined): string {
+  return String(url ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\/(www\.)?/, "")
+    .replace(/[?#].*$/, "")
+    .replace(/\/+$/, "");
+}
+
+/**
+ * Retire du Signal toute brève dont l'article est déjà cité dans une autre
+ * section. La spec l'interdit au modèle, mais la première édition réelle
+ * (24/09) a quand même repris en Signal l'article du Chiffre : une règle de
+ * prompt ne suffit pas, on l'applique ici. Le Signal est la section la moins
+ * coûteuse à amputer, c'est donc lui qui cède.
+ */
+function dropRepeatedSignals(edition: Edition): void {
+  if (!edition.signal) return;
+  const used = new Set(
+    [
+      ...(edition.radar ?? []).map((it) => it.url),
+      edition.deep_dive?.url,
+      edition.number?.url,
+      edition.pick?.url,
+    ]
+      .map(urlKey)
+      .filter(Boolean)
+  );
+  const kept = edition.signal.filter((it) => !used.has(urlKey(it.url)));
+  if (kept.length > 0) edition.signal = kept;
+  else delete edition.signal;
 }
 
 // ─────────────────────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@
  */
 
 import type { Article } from "./types";
-import { normalizeUrl } from "./parse";
+import { normalizeUrl, UNSUPPORTED_EMAIL_IMAGE } from "./parse";
 import { safeFetchText } from "@/lib/tools/safe-fetch";
 import type { Design, Edition, EditionItem } from "@/lib/templates/types";
 
@@ -51,7 +51,7 @@ export function extractOgImage(html: string, baseUrl: string): string | null {
   for (const raw of candidates) {
     try {
       const resolved = new URL(raw.trim(), baseUrl).toString();
-      if (/^https:\/\//i.test(resolved)) return resolved;
+      if (/^https:\/\//i.test(resolved) && !UNSUPPORTED_EMAIL_IMAGE.test(resolved)) return resolved;
     } catch {
       continue;
     }
