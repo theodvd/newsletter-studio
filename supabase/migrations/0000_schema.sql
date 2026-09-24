@@ -40,6 +40,11 @@ create table if not exists public.subscriptions (
   tone              text,
   language          text not null default 'fr',
   status            text not null default 'draft' check (status in ('draft', 'active', 'paused')),
+  -- Réglages de mise en page (template, accent, sections...) : voir
+  -- `resolveDesign` côté code et 0007_design.sql pour l'historique de cette
+  -- colonne. Serveur-only : ne JAMAIS l'ajouter au grant update ci-dessous.
+  design            jsonb not null default '{"template":"editorial"}'::jsonb
+    constraint subscriptions_design_is_object check (jsonb_typeof(design) = 'object'),
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );

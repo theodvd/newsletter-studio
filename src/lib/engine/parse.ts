@@ -146,6 +146,36 @@ export function looksLikeFeed(body: string): boolean {
   return /<(rss|feed|rdf)[\s>]/i.test(body.substring(0, 2000));
 }
 
+function normalizeImageUrl(raw: string): string | null {
+  const decoded = raw.replace(/&amp;/g, "&").trim();
+  return /^https:\/\//i.test(decoded) ? decoded : null;
+}
+
+/**
+ * Image d'un item RSS/Atom : `media:content`, `media:thumbnail`, une
+ * `enclosure` de type image, sinon la première `<img>` du contenu
+ * (`content:encoded` ou `description`). HTTPS uniquement : une image en http
+ * casserait le rendu dans les clients mail qui bloquent le contenu mixte.
+ * Porté depuis `extractImage` du workflow n8n Growfin (`workflow-v2.js`).
+ */
+function extractImage(itemXml: string): string | null {
+  const mediaContent = itemXml.match(/<media:content[^>]+url=["']([^"']+)["']/i);
+  if (mediaContent) return normalizeImageUrl(mediaContent[1]);
+
+  const mediaThumbnail = itemXml.match(/<media:thumbnail[^>]+url=["']([^"']+)["']/i);
+  if (mediaThumbnail) return normalizeImageUrl(mediaThumbnail[1]);
+
+  const enclosure =
+    itemXml.match(/<enclosure[^>]+url=["']([^"']+)["'][^>]+type=["']image[^"']*["']/i) ||
+    itemXml.match(/<enclosure[^>]+type=["']image[^"']*["'][^>]+url=["']([^"']+)["']/i);
+  if (enclosure) return normalizeImageUrl(enclosure[1]);
+
+  const imgTag = itemXml.match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (imgTag) return normalizeImageUrl(imgTag[1]);
+
+  return null;
+}
+
 export type FetchedSource = {
   target: SourceFetchTarget;
   body: string;
@@ -240,6 +270,7 @@ export function parseAndFilter(
           source: meta.sourceTitle,
           pubDate: pubDateStr,
           dateConfidence: pubDate ? "confirmed" : "undated",
+          image_url: extractImage(itemXml),
         });
         if (++kept >= 5) break;
       }

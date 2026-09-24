@@ -8,6 +8,12 @@
  * panne silencieuse de 8 jours en juillet 2026).
  */
 
+import type { SlackPayload } from "@/lib/templates/types";
+
+// Ré-export pratique : le reste du moteur importe `Edition` depuis ici plutôt
+// que depuis `@/lib/templates/types`, pour ne pas disperser les imports.
+export type { Edition } from "@/lib/templates/types";
+
 /** Une source déclarée par l'utilisateur. */
 export type SourceRow = {
   id: string;
@@ -37,6 +43,8 @@ export type SubscriptionConfig = {
   tone: string | null;
   language: string | null;
   status: string;
+  /** Réglages de mise en page (colonne `design`, JSONB) : voir `resolveDesign`. */
+  design?: unknown;
   sources: SourceRow[];
   delivered_items: DeliveredItemRow[];
   profiles: {
@@ -68,21 +76,8 @@ export type Article = {
   source: string;
   pubDate: string;
   dateConfidence: "confirmed" | "undated";
-};
-
-/** Le digest produit par le modèle. */
-export type Digest = {
-  subject: string;
-  intro: string;
-  items: Array<{
-    tag?: string;
-    title: string;
-    summary?: string;
-    why_it_matters?: string;
-    url: string;
-    source?: string;
-  }>;
-  outro?: string;
+  /** Image extraite du flux (media:content, enclosure, ou premier <img>). https uniquement. */
+  image_url?: string | null;
 };
 
 /** Résultat d'une exécution, pour la journalisation et le rapport de tick. */
@@ -93,4 +88,6 @@ export type RunOutcome = {
   itemsSent?: number;
   inputTokens?: number;
   outputTokens?: number;
+  /** Rendu déjà produit, renvoyé seulement en `dryRun` (aperçu, jamais envoyé). */
+  preview?: { subject: string; html: string; slack: SlackPayload };
 };

@@ -1,21 +1,28 @@
 /**
  * Envoi d'une édition, par email (Brevo) ou Slack.
  *
+ * Le rendu (HTML email, Block Kit Slack) est produit en amont par le template
+ * actif (`run.ts` appelle `template.renderEmail`/`renderSlack`) : cette
+ * fonction ne fait plus que l'envoi du résultat déjà prêt, ce qui permet de
+ * prévisualiser une édition (`dryRun`) sans dupliquer la logique de rendu.
+ *
  * Règle de sécurité reprise de l'app : le destinataire email n'est JAMAIS lu
  * depuis `subscriptions.destination`, mais résolu depuis le compte. La colonne
  * est verrouillée côté base, mais le moteur ne doit pas dépendre de ce seul
  * verrou : c'est ici que l'envoi part réellement.
  */
 
-import type { RenderContext } from "./render";
-import { renderEmailHtml, renderSlackBlocks } from "./render";
+import type { SlackPayload } from "@/lib/templates/types";
 
 export type SendResult = { ok: true } | { ok: false; error: string };
 
 const TIMEOUT_MS = 30000;
 
 /** Envoi par email via Brevo. Le destinataire vient du compte, pas de la veille. */
-export async function sendEmail(ctx: RenderContext, accountEmail: string): Promise<SendResult> {
+export async function sendEmail(
+  content: { subject: string; html: string },
+  accountEmail: string
+): Promise<SendResult> {
   const apiKey = process.env.BREVO_API_KEY;
   if (!apiKey) return { ok: false, error: "BREVO_API_KEY manquante côté serveur." };
   if (!accountEmail) return { ok: false, error: "Aucune adresse email sur le compte." };
@@ -36,8 +43,8 @@ export async function sendEmail(ctx: RenderContext, accountEmail: string): Promi
       body: JSON.stringify({
         sender,
         to: [{ email: accountEmail }],
-        subject: ctx.subject,
-        htmlContent: renderEmailHtml(ctx),
+        subject: content.subject,
+        htmlContent: content.html,
       }),
     });
     if (!res.ok) {
@@ -57,11 +64,9 @@ export async function sendEmail(ctx: RenderContext, accountEmail: string): Promi
  * L'hôte du webhook est vérifié : `destination` ne doit pas pouvoir devenir
  * une URL arbitraire, ce serait une SSRF déclenchée par l'utilisateur.
  */
-export async function sendSlack(ctx: RenderContext, destination: string | null): Promise<SendResult> {
+export async function sendSlack(payload: SlackPayload, destination: string | null): Promise<SendResult> {
   const dest = String(destination || "");
   if (!dest) return { ok: false, error: "Aucune destination Slack configurée." };
-
-  const payload = renderSlackBlocks(ctx);
 
   if (dest.startsWith("https://hooks.slack.com/")) {
     try {

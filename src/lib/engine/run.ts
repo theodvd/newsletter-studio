@@ -5,12 +5,19 @@
 
 import { decryptSecret } from "@/lib/crypto";
 import { safeFetchText } from "@/lib/tools/safe-fetch";
+import { allItems, getTemplate, resolveDesign } from "@/lib/templates";
+import { formatEditionDate } from "@/lib/templates/i18n";
+import type { Edition, RenderContext, SlackPayload, SpecContext } from "@/lib/templates/types";
 import { loadConfig, logDelivery } from "./config";
+import { enrichImages } from "./images";
 import { generateDigestText, type LlmCredentials, type LlmProvider } from "./llm";
 import { parseAndFilter, type FetchedSource } from "./parse";
-import { buildPrompt, dateEdition, parseDigest } from "./prompt";
+import { buildPrompt, parseEdition } from "./prompt";
 import { sendEmail, sendSlack } from "./send";
 import type { RunOutcome, SourceFetchTarget, SubscriptionConfig } from "./types";
+
+/** Au-delà, l'editorial (plus long à générer) risque le timeout par défaut. */
+const EDITORIAL_TIMEOUT_MS = 240000;
 
 /** Récupère toutes les sources en parallèle, à travers la garde anti-SSRF. */
 async function fetchSources(config: SubscriptionConfig): Promise<FetchedSource[]> {
@@ -79,12 +86,29 @@ function resolveCredentials(config: SubscriptionConfig): LlmCredentials | null {
   };
 }
 
+export type RunOptions = {
+  /** Ne rend et ne parse que : aucun envoi, aucune écriture en base. Pour l'aperçu. */
+  dryRun?: boolean;
+  /** Court-circuite `resolveCredentials` (aperçu payé par l'hébergeur, à venir). */
+  credentials?: LlmCredentials;
+  /**
+   * Remplace le design enregistré, en aperçu uniquement : sert à montrer un
+   * design avant de l'enregistrer. Ignoré hors `dryRun`, pour qu'un envoi
+   * réel suive toujours ce qui est en base.
+   */
+  designOverride?: unknown;
+};
+
 /**
  * Produit et envoie une édition.
  * Ne lève jamais : tout échec devient une `delivery` en erreur, visible par
  * l'utilisateur dans son historique, plutôt qu'une panne silencieuse.
  */
-export async function runSubscription(subscriptionId: string, now: Date = new Date()): Promise<RunOutcome> {
+export async function runSubscription(
+  subscriptionId: string,
+  now: Date = new Date(),
+  opts: RunOptions = {}
+): Promise<RunOutcome> {
   let config: SubscriptionConfig;
   try {
     config = await loadConfig(subscriptionId);
@@ -93,16 +117,26 @@ export async function runSubscription(subscriptionId: string, now: Date = new Da
   }
 
   const fail = async (reason: string): Promise<RunOutcome> => {
-    await logDelivery({ subscriptionId, status: "error", error: reason, digest: null, articles: [] });
+    if (!opts.dryRun) {
+      await logDelivery({ subscriptionId, status: "error", error: reason, edition: null, articles: [] });
+    }
     return { subscriptionId, status: "error", reason };
   };
 
-  const credentials = resolveCredentials(config);
+  const credentials = opts.credentials ?? resolveCredentials(config);
   if (!credentials) {
     // Sans clé, rien ne peut être produit. On n'écrit pas de delivery en
     // erreur à chaque tick : ce serait du bruit, pas une panne.
     return { subscriptionId, status: "skipped", reason: "Aucune clé API configurée pour ce compte." };
   }
+
+  const language = config.language || "fr";
+  const design = resolveDesign(
+    opts.dryRun && opts.designOverride !== undefined ? opts.designOverride : config.design,
+    config.frequency_cron
+  );
+  const template = getTemplate(design.template);
+  const specCtx: SpecContext = { design, channel: config.channel, language };
 
   let fetched: FetchedSource[];
   try {
@@ -127,33 +161,57 @@ export async function runSubscription(subscriptionId: string, now: Date = new Da
     return { subscriptionId, status: "skipped", reason: "Aucun article frais." };
   }
 
-  const { system, user } = buildPrompt(config, articles, now);
+  const { system, user } = buildPrompt(config, articles, now, template, specCtx);
 
   let generated;
   try {
-    generated = await generateDigestText(credentials, system, user);
+    generated = await generateDigestText(credentials, system, user, {
+      maxTokens: template.maxOutputTokens(specCtx),
+      timeoutMs: design.template === "editorial" ? EDITORIAL_TIMEOUT_MS : undefined,
+    });
   } catch (e) {
     return fail(e instanceof Error ? e.message : "appel du modèle en échec");
   }
 
-  let digest;
+  let edition: Edition;
   try {
-    digest = parseDigest(generated.text);
+    edition = parseEdition(generated.text, template, specCtx);
   } catch (e) {
     return fail(e instanceof Error ? e.message : "réponse du modèle invalide");
   }
 
-  const ctx = {
-    digest,
-    subject: digest.subject,
-    dateEdition: dateEdition(now),
+  await enrichImages(edition, articles, design);
+
+  const dateLabel = formatEditionDate(now, language);
+  const renderCtx: RenderContext = {
+    edition,
+    design,
     subscriptionName: config.name,
+    dateLabel,
+    language,
   };
+
+  const itemsSent = allItems(edition).length;
+
+  if (opts.dryRun) {
+    // Aperçu : on rend les deux formats (utile pour l'aperçu indépendamment
+    // du canal réel de la veille), mais on n'envoie et n'écrit rien.
+    const html = template.renderEmail(renderCtx);
+    const slack: SlackPayload = template.renderSlack(renderCtx);
+    return {
+      subscriptionId,
+      status: "success",
+      itemsSent,
+      inputTokens: generated.inputTokens,
+      outputTokens: generated.outputTokens,
+      preview: { subject: edition.subject, html, slack },
+    };
+  }
 
   const sent =
     config.channel === "slack"
-      ? await sendSlack(ctx, config.destination)
-      : await sendEmail(ctx, config.profiles?.email || "");
+      ? await sendSlack(template.renderSlack(renderCtx), config.destination)
+      : await sendEmail({ subject: edition.subject, html: template.renderEmail(renderCtx) }, config.profiles?.email || "");
 
   if (!sent.ok) {
     // L'édition est perdue, mais les articles NE sont PAS marqués envoyés :
@@ -161,12 +219,12 @@ export async function runSubscription(subscriptionId: string, now: Date = new Da
     return fail(sent.error);
   }
 
-  await logDelivery({ subscriptionId, status: "success", error: null, digest, articles });
+  await logDelivery({ subscriptionId, status: "success", error: null, edition, articles });
 
   return {
     subscriptionId,
     status: "success",
-    itemsSent: digest.items.length,
+    itemsSent,
     inputTokens: generated.inputTokens,
     outputTokens: generated.outputTokens,
   };

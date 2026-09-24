@@ -1,0 +1,65 @@
+{
+  "html": "<!DOCTYPE html><html><body style=\"margin:0;background:#f3f4f6;\"><table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td align=\"center\" style=\"padding:32px 16px;\"><table role=\"presentation\" width=\"600\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:600px;background:#ffffff;border-radius:12px;padding:32px;font-family:Arial,Helvetica,sans-serif;\"><tr><td style=\"padding-bottom:8px;\"><div style=\"font-size:12px;color:#6b7280;\">Lundi 21 septembre 2026 · Veille Fintech</div><h1 style=\"font-size:24px;color:#111827;margin:8px 0;\">OpenAI lève 6,6 milliards, la Fed hésite sur les taux</h1><p style=\"font-size:15px;color:#374151;line-height:1.6;\">Une semaine chargée entre levées record et prudence monétaire : voici ce qu'il faut retenir.</p><hr style=\"border:none;border-top:1px solid #e5e7eb;margin:16px 0;\"></td></tr><tr><td style=\"padding:0 0 24px 0;\"><div style=\"font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6366f1;font-weight:bold;\">ia · TechCrunch</div><a href=\"https://example.com/openai-levee-6-6-milliards\" style=\"font-size:18px;color:#111827;font-weight:bold;text-decoration:none;display:block;margin:6px 0;\">OpenAI boucle un tour de table de 6,6 milliards de dollars</a><div style=\"font-size:14px;color:#374151;line-height:1.6;\">La valorisation grimpe à 157 milliards de dollars. Thrive Capital mène le tour, avec Microsoft en participation notable.</div><div style=\"font-size:13px;color:#6b7280;font-style:italic;margin-top:6px;\">&rarr; Pour un professionnel de la fintech, ce niveau de valorisation redéfinit les attentes de rentabilité des futurs tours IA.</div></td></tr><tr><td style=\"padding:0 0 24px 0;\"><div style=\"font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6366f1;font-weight:bold;\">regulation · Reuters</div><a href=\"https://example.com/fed-taux-inchanges\" style=\"font-size:18px;color:#111827;font-weight:bold;text-decoration:none;display:block;margin:6px 0;\">La Fed maintient ses taux, prudence assumée</a><div style=\"font-size:14px;color:#374151;line-height:1.6;\">Le comité de politique monétaire évoque une inflation encore trop instable pour baisser les taux dès ce trimestre.</div><div style=\"font-size:13px;color:#6b7280;font-style:italic;margin-top:6px;\">&rarr; Les conditions de financement des startups fintech restent tendues au moins jusqu'au prochain comité.</div></td></tr><tr><td style=\"padding:0 0 24px 0;\"><div style=\"font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#6366f1;font-weight:bold;\">fintech</div><a href=\"https://example.com/stripe-tresorerie-pme\" style=\"font-size:18px;color:#111827;font-weight:bold;text-decoration:none;display:block;margin:6px 0;\">Stripe étend son offre de trésorerie aux PME européennes</a><div style=\"font-size:14px;color:#374151;line-height:1.6;\"></div></td></tr><tr><td style=\"font-size:13px;color:#6b7280;padding-top:8px;\">Bonne semaine, et à lundi prochain.</td></tr><tr><td style=\"padding-top:24px;font-size:11px;color:#9ca3af;\">Veille générée par Lia · Newsletter Studio</td></tr></table></td></tr></table></body></html>",
+  "slack": {
+    "text": "OpenAI lève 6,6 milliards, la Fed hésite sur les taux",
+    "blocks": [
+      {
+        "type": "header",
+        "text": {
+          "type": "plain_text",
+          "text": "OpenAI lève 6,6 milliards, la Fed hésite sur les taux",
+          "emoji": true
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Lundi 21 septembre 2026 · Veille Fintech"
+          }
+        ]
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "Une semaine chargée entre levées record et prudence monétaire : voici ce qu'il faut retenir."
+        }
+      },
+      {
+        "type": "divider"
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*<https://example.com/openai-levee-6-6-milliards|OpenAI boucle un tour de table de 6,6 milliards de dollars>*  `ia`\nLa valorisation grimpe à 157 milliards de dollars. Thrive Capital mène le tour, avec Microsoft en participation notable.\n_Pour un professionnel de la fintech, ce niveau de valorisation redéfinit les attentes de rentabilité des futurs tours IA._  ·  TechCrunch"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*<https://example.com/fed-taux-inchanges|La Fed maintient ses taux, prudence assumée>*  `regulation`\nLe comité de politique monétaire évoque une inflation encore trop instable pour baisser les taux dès ce trimestre.\n_Les conditions de financement des startups fintech restent tendues au moins jusqu'au prochain comité._  ·  Reuters"
+        }
+      },
+      {
+        "type": "section",
+        "text": {
+          "type": "mrkdwn",
+          "text": "*<https://example.com/stripe-tresorerie-pme|Stripe étend son offre de trésorerie aux PME européennes>*  `fintech`\n"
+        }
+      },
+      {
+        "type": "context",
+        "elements": [
+          {
+            "type": "mrkdwn",
+            "text": "Bonne semaine, et à lundi prochain."
+          }
+        ]
+      }
+    ]
+  }
+}
