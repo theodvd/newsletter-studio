@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { editorialTemplate } from "./editorial";
+import { editorialTemplate, expectedOutputTokensForSections } from "./editorial";
 import type { Design, SpecContext } from "./types";
 
 function design(sections: Design["sections"]): Design {
@@ -120,11 +120,17 @@ describe("editorialTemplate.validate", () => {
 });
 
 describe("editorialTemplate.maxOutputTokens", () => {
-  it("clampe entre 2500 et 8000 et somme les sections actives", () => {
-    expect(editorialTemplate.maxOutputTokens(ctx(["radar"]))).toBeGreaterThanOrEqual(2500);
-    expect(editorialTemplate.maxOutputTokens(ctx(FULL_SECTIONS))).toBeLessThanOrEqual(8000);
-    // base 700 + radar 1100 + deep_dive 2000 + signal 800 + number 200 + pick 250 = 5050
-    expect(editorialTemplate.maxOutputTokens(ctx(FULL_SECTIONS))).toBe(5050);
+  it("borne le plafond entre 4000 et 12000, avec une marge de 1,8 sur l'attendu", () => {
+    expect(editorialTemplate.maxOutputTokens(ctx(["radar"]))).toBeGreaterThanOrEqual(4000);
+    expect(editorialTemplate.maxOutputTokens(ctx(FULL_SECTIONS))).toBeLessThanOrEqual(12000);
+    // attendu : base 900 + radar 1500 + deep_dive 1500 + signal 1000 + number 250 + pick 300 = 5450
+    expect(expectedOutputTokensForSections(FULL_SECTIONS)).toBe(5450);
+    expect(editorialTemplate.maxOutputTokens(ctx(FULL_SECTIONS))).toBe(Math.round(5450 * 1.8));
+  });
+
+  it("laisse assez de marge à une édition quotidienne (tronquée à 2800 le 24/09)", () => {
+    const daily = editorialTemplate.maxOutputTokens(ctx(["radar", "signal", "number"]));
+    expect(daily).toBeGreaterThan(2800 * 2);
   });
 
   it("sur Slack, ne compte pas deep_dive ni pick", () => {

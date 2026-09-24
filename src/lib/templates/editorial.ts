@@ -149,29 +149,41 @@ function outputSpec(ctx: SpecContext): string {
   );
 }
 
-const TOKENS_BASE = 700;
-const TOKENS_PER_SECTION: Record<SectionId, number> = {
-  radar: 1100,
-  deep_dive: 2000,
-  signal: 800,
-  number: 200,
-  pick: 250,
+/**
+ * Longueur de sortie ATTENDUE par section, en tokens. Mesurée sur une vraie
+ * édition quotidienne (Radar, Signal, Chiffre) : elle a dépassé 2 800 tokens,
+ * les URLs et la structure JSON pesant plus lourd qu'on ne l'imagine.
+ */
+const EXPECTED_BASE = 900; // objet, preheader, intro, enveloppe JSON
+const EXPECTED_PER_SECTION: Record<SectionId, number> = {
+  radar: 1500,
+  deep_dive: 1500,
+  signal: 1000,
+  number: 250,
+  pick: 300,
 };
-const MIN_TOKENS = 2500;
-const MAX_TOKENS = 8000;
 
 /**
- * Calcul pur du plafond de tokens pour un jeu de sections, sans dépendre d'un
- * `SpecContext`. Exporté séparément pour que `pricing.ts` puisse estimer le
- * coût d'une veille depuis son seul `Design`, sans avoir besoin d'un canal.
+ * Le plafond laisse une large marge au-dessus de l'attendu. Ce n'est pas un
+ * coût (seuls les tokens réellement écrits sont facturés), c'est un
+ * garde-fou : trop bas, l'édition est tronquée et part en erreur.
  */
-export function estimateOutputTokensForSections(sections: SectionId[]): number {
-  const total = sections.reduce((sum, s) => sum + TOKENS_PER_SECTION[s], TOKENS_BASE);
-  return Math.min(MAX_TOKENS, Math.max(MIN_TOKENS, total));
+const CEILING_MARGIN = 1.8;
+const MIN_TOKENS = 4000;
+const MAX_TOKENS = 12000;
+
+/**
+ * Longueur de sortie attendue pour un jeu de sections, sans dépendre d'un
+ * `SpecContext`. Exportée pour que `pricing.ts` estime le coût d'une veille
+ * depuis son seul `Design`.
+ */
+export function expectedOutputTokensForSections(sections: SectionId[]): number {
+  return sections.reduce((sum, s) => sum + EXPECTED_PER_SECTION[s], EXPECTED_BASE);
 }
 
 function maxOutputTokens(ctx: SpecContext): number {
-  return estimateOutputTokensForSections(activeSections(ctx));
+  const expected = expectedOutputTokensForSections(activeSections(ctx));
+  return Math.min(MAX_TOKENS, Math.max(MIN_TOKENS, Math.round(expected * CEILING_MARGIN)));
 }
 
 // ─────────────────────────────────────────────────────────────────────────

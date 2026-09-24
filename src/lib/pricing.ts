@@ -4,7 +4,7 @@
  * du coût récurrent de la veille selon sa fréquence cron et son template.
  */
 
-import { estimateOutputTokensForSections } from "@/lib/templates/editorial";
+import { expectedOutputTokensForSections } from "@/lib/templates/editorial";
 import type { Design } from "@/lib/templates/types";
 
 export const SONNET_INPUT_PER_TOKEN = 3 / 1_000_000;
@@ -24,20 +24,15 @@ export const ENGINE_RUN_COST_USD = costUsd(ENGINE_RUN_INPUT_TOKENS, ENGINE_RUN_O
 // L'editorial agrège plus d'articles (5 sections potentielles) et produit un
 // deep dive : le prompt pèse davantage en entrée qu'avec le classic.
 const EDITORIAL_RUN_INPUT_TOKENS = 9_000;
-// Le modèle n'utilise presque jamais tout le plafond de sortie qu'on lui
-// laisse (`Template.maxOutputTokens`) : 60 % est l'ordre de grandeur observé.
-const EDITORIAL_OUTPUT_RATIO = 0.6;
-
 /**
  * Estimation du coût d'une exécution du moteur, selon le template choisi.
  * Le classic garde exactement l'estimation d'avant les templates (8k in /
- * 1,5k out) ; l'editorial part de ses sections actives pour estimer un
- * plafond de sortie, puis suppose que le modèle en utilise 60 %.
+ * 1,5k out) ; l'editorial part de la longueur ATTENDUE de ses sections
+ * actives, pas de son plafond de sortie, qui n'est qu'un garde-fou.
  */
 export function estimateRunCostUsd(design: Design): number {
   if (design.template === "editorial") {
-    const maxOutputTokens = estimateOutputTokensForSections(design.sections);
-    return costUsd(EDITORIAL_RUN_INPUT_TOKENS, Math.round(maxOutputTokens * EDITORIAL_OUTPUT_RATIO));
+    return costUsd(EDITORIAL_RUN_INPUT_TOKENS, expectedOutputTokensForSections(design.sections));
   }
   return ENGINE_RUN_COST_USD;
 }
