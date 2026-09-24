@@ -38,9 +38,31 @@ function loadEnvLocal(filePath: string): void {
 async function main(): Promise<void> {
   loadEnvLocal(path.resolve(__dirname, "../.env.local"));
 
+  // `--list` : affiche les veilles (identifiant, nom, statut...) pour retrouver
+  // celle à tester. Aucune donnée personnelle : ni email, ni profil.
+  if (process.argv[2] === "--list") {
+    const { createAdminClient } = await import("../src/lib/supabase/server");
+    const { data, error } = await createAdminClient()
+      .from("subscriptions")
+      .select("id, name, status, channel, language, frequency_cron, updated_at, sources(count)")
+      .order("updated_at", { ascending: false });
+    if (error) {
+      console.error(`Liste impossible : ${error.message}`);
+      process.exitCode = 1;
+      return;
+    }
+    for (const s of data ?? []) {
+      const count = (s.sources as unknown as Array<{ count: number }>)?.[0]?.count ?? 0;
+      console.log(
+        [s.id, s.status, s.channel, s.language, s.frequency_cron, `${count} sources`, s.updated_at?.slice(0, 16), s.name].join("  |  ")
+      );
+    }
+    return;
+  }
+
   const subscriptionId = process.argv[2];
   if (!subscriptionId) {
-    console.error("Usage : tsx scripts/dry-run.ts <subscriptionId> [classic|editorial]");
+    console.error("Usage : tsx scripts/dry-run.ts --list | <subscriptionId> [classic|editorial]");
     process.exitCode = 1;
     return;
   }

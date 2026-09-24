@@ -139,3 +139,19 @@ describe("editorialTemplate.maxOutputTokens", () => {
     expect(onSlack).toBeLessThan(withAll);
   });
 });
+
+describe("editorialTemplate.renderEmail", () => {
+  it("retire le tiret cadratin du titre d'en-tête, qui vient du nom de la veille", () => {
+    const emDash = String.fromCharCode(0x2014);
+    const edition = editorialTemplate.validate(validJson(), ctx(FULL_SECTIONS));
+    const html = editorialTemplate.renderEmail({
+      edition,
+      design: design(FULL_SECTIONS),
+      subscriptionName: `TEST ${emDash} Veille fintech quotidienne`,
+      dateLabel: "Jeudi 24 septembre 2026",
+      language: "fr",
+    });
+    expect(html).not.toContain(emDash);
+    expect(html).toContain("TEST, Veille fintech quotidienne");
+  });
+});

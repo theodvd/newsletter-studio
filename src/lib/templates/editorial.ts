@@ -119,6 +119,9 @@ function outputSpec(ctx: SpecContext): string {
   const rules: string[] = [
     `Sections a produire, en plus de subject/preheader/intro/outro : ${active.join(", ")}. N'en ajoute aucune autre.`,
     "Chaque article n'est utilise qu'une seule fois dans toute l'edition, tous champs confondus.",
+    "Chaque sujet (le meme evenement, la meme annonce) n'apparait qu'une seule fois dans toute l'edition, meme si plusieurs articles en parlent : garde la meilleure source.",
+    "Ecarte les contenus promotionnels (reductions, offres, billets, contenus sponsorises, annonces d'intervenants ou de programme d'un evenement), sauf s'ils sont une vraie information pour ce profil.",
+    "Orthographe soignee dans la langue de redaction, accents compris y compris sur les majuscules (en francais : É, À, Ç...), meme si ces instructions sont ecrites sans accents.",
     URLS_ONLY_RULE,
     "source doit etre l'editeur d'origine de l'article quand il est identifiable, jamais un agregateur.",
     "Aucun emoji, nulle part dans le contenu.",
@@ -138,6 +141,9 @@ function outputSpec(ctx: SpecContext): string {
   }
   if (has("number")) {
     rules.push("number DOIT venir d'un des articles fournis ci-dessous : n'invente jamais de chiffre.");
+    rules.push(
+      "number est un fait qui dit quelque chose du marche, d'une entreprise ou d'une regle (montant leve, croissance, part de marche, emplois, amende...), jamais le prix d'une offre ou une reduction."
+    );
   }
 
   return (
@@ -198,6 +204,14 @@ function isHttpUrl(url: unknown): boolean {
 // dans le source : ce fichier doit rester exempt de ce caractère littéral.
 const EM_DASH = String.fromCharCode(0x2014);
 const EM_DASH_PATTERN = new RegExp("\\s*" + EM_DASH + "\\s*", "g");
+
+/**
+ * Le titre d'en-tête vient du nom de la veille ou du design, c'est-à-dire de
+ * l'utilisateur, pas du modèle : il échappe donc à `validate`. Même règle ici.
+ */
+function cleanTitle(value: string): string {
+  return value.trim().replace(EM_DASH_PATTERN, ", ");
+}
 
 /**
  * Trim + remplace tout tiret cadratin (U+2014, et les espaces autour) par ", ",
@@ -593,7 +607,7 @@ function tocChips(active: SectionId[], labels: Labels): string {
 function renderEmail(ctx: RenderContext): string {
   const { edition, design, subscriptionName, dateLabel, language } = ctx;
   const labels = labelsFor(language);
-  const title = design.title || subscriptionName;
+  const title = cleanTitle(design.title || subscriptionName);
   const showImages = design.images;
   const ink = readableOn(design.accent);
   const pillBg = ink === "#ffffff" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)";
@@ -680,7 +694,7 @@ function slackHref(url: unknown): string {
 
 function renderSlack(ctx: RenderContext): SlackPayload {
   const { edition, design, subscriptionName, dateLabel } = ctx;
-  const title = design.title || subscriptionName;
+  const title = cleanTitle(design.title || subscriptionName);
   const blocks: unknown[] = [];
 
   blocks.push({
