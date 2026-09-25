@@ -19,7 +19,7 @@ export async function GET(request: Request) {
   let query = supabase
     .from("subscriptions")
     .select(
-      "id, name, channel, destination, destination_label, frequency_cron, tone, language, status, sources(url, feed_url, title, type, validation_status, added_by)"
+      "id, name, channel, destination, destination_label, frequency_cron, tone, language, status, design, sources(url, feed_url, title, type, validation_status, added_by)"
     );
 
   // ?id= : édition d'une veille précise (active comprise) ; sinon dernier brouillon

@@ -710,9 +710,13 @@ function renderEmail(ctx: RenderContext): string {
     `<div style="display:none;max-height:0;overflow:hidden;font-size:0;line-height:0;color:${STONE_100};opacity:0;">${esc(
       preheaderText
     )}</div>` +
-    `<center><table role="presentation" width="${WIDTH}" cellpadding="0" cellspacing="0" style="max-width:${WIDTH}px;margin:0 auto;background:${STONE_50};">` +
+    // Tableau fluide (100 %, plafonné à 600 px) pour que l'édition tienne sur
+    // un téléphone. Outlook sur ordinateur ignore `max-width` : la table
+    // conditionnelle `mso` lui redonne une largeur fixe.
+    `<center><!--[if mso]><table role="presentation" width="${WIDTH}" align="center" cellpadding="0" cellspacing="0"><tr><td><![endif]-->` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:${WIDTH}px;margin:0 auto;background:${STONE_50};">` +
     body +
-    "</table></center></body></html>"
+    "</table><!--[if mso]></td></tr></table><![endif]--></center></body></html>"
   );
 }
 

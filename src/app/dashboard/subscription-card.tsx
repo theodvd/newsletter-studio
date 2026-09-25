@@ -3,8 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ENGINE_RUN_COST_USD, formatUsd, runsPerWeek } from "@/lib/pricing";
+import { estimateRunCostUsd, formatUsd, runsPerWeek } from "@/lib/pricing";
 import { describeCron } from "@/lib/cron";
+import { resolveDesignForSubscription } from "@/lib/templates/design";
+import { PreviewDialog } from "@/components/preview-dialog";
 
 /**
  * One digest card: status, schedule, last 3 deliveries,
@@ -21,6 +23,8 @@ type Subscription = {
   destination_label: string | null;
   frequency_cron: string;
   status: string;
+  /** Réglages de mise en page (colonne `design`) : voir `resolveDesignForSubscription`. */
+  design?: unknown;
   sources: { id: string }[];
   deliveries: Delivery[];
 };
@@ -28,6 +32,7 @@ type Subscription = {
 export function SubscriptionCard({ subscription }: { subscription: Subscription }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const router = useRouter();
   const paused = subscription.status === "paused";
 
@@ -66,7 +71,7 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
     .sort((a, b) => +new Date(b.sent_at) - +new Date(a.sent_at))
     .slice(0, 3);
 
-  const weeklyCost = runsPerWeek(subscription.frequency_cron) * ENGINE_RUN_COST_USD;
+  const weeklyCost = runsPerWeek(subscription.frequency_cron) * estimateRunCostUsd(resolveDesignForSubscription(subscription));
 
   return (
     <div className="glass glass-hover rounded-3xl p-6">
@@ -107,6 +112,12 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
           )}
         </div>
         <div className="flex shrink-0 gap-2">
+          <button
+            onClick={() => setPreviewOpen(true)}
+            className="rounded-xl border border-white/10 px-3.5 py-2 text-xs text-slate-300 transition-colors hover:border-accent/40 hover:text-white"
+          >
+            Preview
+          </button>
           <Link
             href={`/onboarding?edit=${subscription.id}`}
             className="rounded-xl border border-accent/30 bg-accent/10 px-3.5 py-2 text-xs font-medium text-accent transition-colors hover:bg-accent/20"
@@ -130,6 +141,13 @@ export function SubscriptionCard({ subscription }: { subscription: Subscription 
         </div>
       </div>
       {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+
+      <PreviewDialog
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        subscriptionId={subscription.id}
+        subscriptionName={subscription.name}
+      />
     </div>
   );
 }

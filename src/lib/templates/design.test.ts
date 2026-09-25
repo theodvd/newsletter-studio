@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveDesign } from "./design";
+import { resolveDesign, resolveDesignForSubscription } from "./design";
 
 const DAILY_CRON = "0 7 * * 1-5"; // 5 run/semaine
 const WEEKLY_CRON = "0 7 * * 1"; // 1 run/semaine
@@ -78,5 +78,45 @@ describe("resolveDesign", () => {
     expect(resolveDesign({ template: "editorial", images: "oui" }, WEEKLY_CRON).images).toBe(true);
     expect(resolveDesign({ template: "editorial" }, WEEKLY_CRON).images).toBe(true);
     expect(resolveDesign({ template: "editorial", images: false }, WEEKLY_CRON).images).toBe(false);
+  });
+});
+
+describe("resolveDesignForSubscription", () => {
+  it("un brouillon sans design résout sur editorial", () => {
+    const resolved = resolveDesignForSubscription({
+      design: undefined,
+      frequency_cron: WEEKLY_CRON,
+      status: "draft",
+    });
+    expect(resolved.template).toBe("editorial");
+    expect(resolved.sections).toEqual(["radar", "deep_dive", "signal", "number", "pick"]);
+  });
+
+  it("un brouillon avec design null résout aussi sur editorial", () => {
+    expect(
+      resolveDesignForSubscription({ design: null, frequency_cron: WEEKLY_CRON, status: "draft" }).template
+    ).toBe("editorial");
+  });
+
+  it("une veille active sans design retombe sur classic (jamais sur editorial dans son dos)", () => {
+    expect(
+      resolveDesignForSubscription({ design: undefined, frequency_cron: WEEKLY_CRON, status: "active" }).template
+    ).toBe("classic");
+  });
+
+  it("une veille en pause sans design retombe aussi sur classic", () => {
+    expect(
+      resolveDesignForSubscription({ design: undefined, frequency_cron: WEEKLY_CRON, status: "paused" }).template
+    ).toBe("classic");
+  });
+
+  it("un design enregistré est respecté quel que soit le statut", () => {
+    const design = { template: "editorial", accent: "#AB12CD" };
+    expect(
+      resolveDesignForSubscription({ design, frequency_cron: WEEKLY_CRON, status: "active" }).accent
+    ).toBe("#AB12CD");
+    expect(
+      resolveDesignForSubscription({ design, frequency_cron: WEEKLY_CRON, status: "draft" }).accent
+    ).toBe("#AB12CD");
   });
 });

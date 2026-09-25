@@ -100,10 +100,13 @@ create index if not exists delivered_items_subscription_delivered_idx
   on public.delivered_items (subscription_id, delivered_at desc);
 
 -- ── consommation de l'onboarding (clé de l'hébergeur) ───────────────────────
+-- `kind` couvre la conversation d'onboarding ('chat') et une génération
+-- d'aperçu réelle ('preview', voir 0008_previews.sql) : les deux tournent sur
+-- la clé de l'hébergeur et comptent dans le même plafond hebdomadaire.
 create table if not exists public.usage_log (
   id            bigint generated always as identity primary key,
   user_id       uuid not null references public.profiles(id) on delete cascade,
-  kind          text not null default 'chat' check (kind = 'chat'),
+  kind          text not null default 'chat' check (kind in ('chat', 'preview')),
   input_tokens  integer not null default 0,
   output_tokens integer not null default 0,
   cost_usd      numeric not null default 0 check (cost_usd >= 0),
@@ -111,6 +114,29 @@ create table if not exists public.usage_log (
 );
 
 create index if not exists usage_log_user_created_idx on public.usage_log (user_id, created_at desc);
+
+-- ── aperçu d'une veille avant lancement ─────────────────────────────────────
+-- Voir 0008_previews.sql pour le contexte complet : stocke l'ÉDITION générée
+-- (le JSON), pour qu'un changement de design ultérieur la re-rende sans
+-- rappeler le modèle. Table serveur-only : RLS activé sans aucune politique,
+-- tous les privilèges de table retirés à `anon`/`authenticated` plus bas.
+create table if not exists public.previews (
+  id              uuid primary key default gen_random_uuid(),
+  subscription_id uuid not null references public.subscriptions(id) on delete cascade,
+  user_id         uuid not null references public.profiles(id) on delete cascade,
+  edition         jsonb not null,
+  input_tokens    int not null default 0,
+  output_tokens   int not null default 0,
+  cost_usd        numeric not null default 0 check (cost_usd >= 0),
+  sent_count      int not null default 0,
+  last_sent_at    timestamptz,
+  created_at      timestamptz not null default now()
+);
+
+create index if not exists previews_subscription_created_idx
+  on public.previews (subscription_id, created_at desc);
+create index if not exists previews_user_created_idx
+  on public.previews (user_id, created_at desc);
 
 -- ============================================================================
 -- Création automatique du profil à l'inscription
@@ -157,6 +183,10 @@ alter table public.sources         enable row level security;
 alter table public.deliveries      enable row level security;
 alter table public.delivered_items enable row level security;
 alter table public.usage_log       enable row level security;
+-- `previews` : RLS activé SANS AUCUNE politique (table serveur-only, voir
+-- 0008_previews.sql) : aucune ligne n'est donc jamais visible ni écrivable
+-- via PostgREST, quelle que soit la clé côté client.
+alter table public.previews        enable row level security;
 
 drop policy if exists "own profile" on public.profiles;
 create policy "own profile" on public.profiles
@@ -209,3 +239,8 @@ grant  update (name, profile_prompt, tone, language) on public.subscriptions to 
 -- session, et le RLS y garantit déjà la propriété.
 
 revoke insert, update, delete on public.usage_log from authenticated, anon;
+
+-- Table serveur-only : aucun privilège, sur aucune colonne (lue et écrite
+-- uniquement par les routes API avec la clé service, après vérification de
+-- propriété côté session). Voir 0008_previews.sql.
+revoke all on public.previews from anon, authenticated;

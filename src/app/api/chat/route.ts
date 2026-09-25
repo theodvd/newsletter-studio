@@ -469,7 +469,7 @@ export async function POST(request: Request) {
                 const { data: freshDraft } = await supabase
                   .from("subscriptions")
                   .select(
-                    "id, name, channel, destination, destination_label, frequency_cron, tone, language, status, sources(url, feed_url, title, type, validation_status, added_by)"
+                    "id, name, channel, destination, destination_label, frequency_cron, tone, language, status, design, sources(url, feed_url, title, type, validation_status, added_by)"
                   )
                   .eq("id", subscriptionId)
                   .maybeSingle();

@@ -204,7 +204,10 @@ export async function runSubscription(
       itemsSent,
       inputTokens: generated.inputTokens,
       outputTokens: generated.outputTokens,
-      preview: { subject: edition.subject, html, slack },
+      // `edition` (le JSON, pas seulement son rendu) : l'étape « preview » la
+      // stocke pour pouvoir re-rendre gratuitement un futur changement de
+      // design, sans rappeler le modèle.
+      preview: { subject: edition.subject, html, slack, edition },
     };
   }
 

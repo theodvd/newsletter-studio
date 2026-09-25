@@ -94,3 +94,31 @@ export function resolveDesign(raw: unknown, frequencyCron: string): Design {
     images: typeof obj.images === "boolean" ? obj.images : true,
   };
 }
+
+/**
+ * Résout le design d'une veille EXISTANTE (ligne `subscriptions` déjà
+ * chargée), pour les routes qui n'ont qu'un enregistrement sous la main
+ * (aperçu, estimation de coût affichée dans l'UI) plutôt qu'une valeur brute
+ * et une cadence séparées.
+ *
+ * Un brouillon sans `design` enregistré (`null`/`undefined` : créé avant
+ * 0007_design.sql, ou colonne pas encore sélectionnée par une requête plus
+ * ancienne) résout sur `editorial`, exactement le repli que le backfill de
+ * 0007 applique déjà aux brouillons : personne n'a encore reçu son rendu, rien
+ * n'empêche donc de lui donner le template par défaut d'aujourd'hui. Une
+ * veille active ou en pause, elle, passe par `resolveDesign` sans ce repli :
+ * `design` y est `NOT NULL` depuis 0007, et à défaut d'une valeur exploitable
+ * elle doit garder le rendu classic qu'elle envoie déjà, jamais changer de
+ * template dans son dos.
+ */
+export function resolveDesignForSubscription(sub: {
+  design?: unknown;
+  frequency_cron: string;
+  status: string;
+}): Design {
+  const raw = sub.design === null || sub.design === undefined ? undefined : sub.design;
+  if (raw === undefined && sub.status === "draft") {
+    return resolveDesign({ template: "editorial" }, sub.frequency_cron);
+  }
+  return resolveDesign(raw, sub.frequency_cron);
+}

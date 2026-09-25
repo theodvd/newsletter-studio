@@ -8,7 +8,7 @@
  * panne silencieuse de 8 jours en juillet 2026).
  */
 
-import type { SlackPayload } from "@/lib/templates/types";
+import type { Edition, SlackPayload } from "@/lib/templates/types";
 
 // Ré-export pratique : le reste du moteur importe `Edition` depuis ici plutôt
 // que depuis `@/lib/templates/types`, pour ne pas disperser les imports.
@@ -89,5 +89,5 @@ export type RunOutcome = {
   inputTokens?: number;
   outputTokens?: number;
   /** Rendu déjà produit, renvoyé seulement en `dryRun` (aperçu, jamais envoyé). */
-  preview?: { subject: string; html: string; slack: SlackPayload };
+  preview?: { subject: string; html: string; slack: SlackPayload; edition: Edition };
 };

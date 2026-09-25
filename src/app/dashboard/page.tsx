@@ -17,7 +17,7 @@ export default async function DashboardPage() {
     supabase
       .from("subscriptions")
       .select(
-        "id, name, channel, destination, destination_label, frequency_cron, status, created_at, sources(id), deliveries(id, sent_at, status)"
+        "id, name, channel, destination, destination_label, frequency_cron, status, created_at, design, sources(id), deliveries(id, sent_at, status)"
       )
       .neq("status", "draft")
       .order("created_at", { ascending: false }),

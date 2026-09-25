@@ -12,10 +12,13 @@
 --
 -- Ordre de déploiement (IMPORTANT)
 --   Le code tolère l'absence de cette colonne (`resolveDesign(undefined)` =>
---   classic) : DÉPLOYER LE CODE D'ABORD, PUIS CE SQL. Dans l'autre sens, rien
---   ne casse non plus (une colonne `design` non lue par un code plus ancien
---   est simplement ignorée), mais l'ordre code-puis-SQL est celui qui a été
---   testé et c'est celui à suivre.
+--   classic) : les deux ordres sont sûrs POUR CETTE MIGRATION PRISE SEULE
+--   (code d'abord, ou SQL d'abord : une colonne `design` non lue par un code
+--   plus ancien est simplement ignorée).
+--   Ceci n'est plus vrai à partir de l'étape « preview » (0008_previews.sql) :
+--   son code sélectionne explicitement la colonne `design`. À partir de cette
+--   étape, l'ordre à suivre est SQL d'abord (0007 puis 0008), CODE ensuite.
+--   Voir l'en-tête de 0008_previews.sql pour le détail.
 --
 -- Backfill : les veilles déjà lancées (actives ou en pause) gardent
 --   EXPLICITEMENT `classic`, pour ne changer le rendu d'aucune veille en cours.

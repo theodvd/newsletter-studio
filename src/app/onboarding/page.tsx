@@ -5,8 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ENGINE_RUN_COST_USD, costUsd, formatUsd, runsPerWeek } from "@/lib/pricing";
+import { costUsd, estimateRunCostUsd, formatUsd, runsPerWeek } from "@/lib/pricing";
 import { describeCron } from "@/lib/cron";
+import { resolveDesignForSubscription } from "@/lib/templates/design";
+import { PreviewDialog } from "@/components/preview-dialog";
 
 /**
  * Conversational onboarding with Lia.
@@ -43,6 +45,8 @@ type Draft = {
   tone: string | null;
   language: string;
   status: string;
+  /** Réglages de mise en page (colonne `design`) : voir `resolveDesignForSubscription`. */
+  design?: unknown;
   sources: DraftSource[];
 };
 
@@ -129,6 +133,7 @@ function Onboarding() {
   /** Onglet mobile actif : "chat" | "digest" */
   const [mobileTab, setMobileTab] = useState<"chat" | "digest">("chat");
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const router = useRouter();
 
@@ -410,8 +415,10 @@ function Onboarding() {
   // ── Calculs ────────────────────────────────────────────────────────────────
 
   const conversationCost = costUsd(tokens.input, tokens.output);
+  const design = useMemo(() => (draft ? resolveDesignForSubscription(draft) : null), [draft]);
   const weeklyRuns = useMemo(() => (draft ? runsPerWeek(draft.frequency_cron) : 0), [draft]);
-  const weeklyCost = weeklyRuns * ENGINE_RUN_COST_USD;
+  const perRunCost = design ? estimateRunCostUsd(design) : 0;
+  const weeklyCost = weeklyRuns * perRunCost;
 
   /** Vrai si la conversation n'a que le message d'accueil initial */
   const showChips =
@@ -763,6 +770,7 @@ function Onboarding() {
                   <span className="text-slate-300">· {describeCron(draft.frequency_cron)}</span>
                 </p>
                 {draft.tone && <p>Tone: {draft.tone}</p>}
+                <p>Layout: {design?.template === "classic" ? "Classic" : "Editorial"}</p>
               </div>
 
               <div>
@@ -801,12 +809,29 @@ function Onboarding() {
                   Estimated running cost:{" "}
                   <span className="text-slate-300">~{formatUsd(weeklyCost)}/week</span>{" "}
                   ({weeklyRuns} {weeklyRuns > 1 ? "deliveries" : "delivery"}/week, ~
-                  {formatUsd(ENGINE_RUN_COST_USD)} each)
+                  {formatUsd(perRunCost)} each)
                 </p>
               </div>
             </motion.div>
           )}
         </div>
+
+        {/* Bouton Preview, au-dessus du bouton Launch */}
+        <AnimatePresence>
+          {draft && (
+            <motion.button
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease }}
+              onClick={() => setPreviewOpen(true)}
+              aria-label="Preview my digest"
+              className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 font-display text-sm font-semibold text-slate-200 transition-colors hover:border-accent/40 hover:text-white"
+            >
+              Preview
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* Bouton Launch / live indicator */}
         <AnimatePresence>
@@ -849,6 +874,15 @@ function Onboarding() {
           ) : null}
         </AnimatePresence>
       </aside>
+
+      {draft && (
+        <PreviewDialog
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          subscriptionId={draft.id}
+          subscriptionName={draft.name}
+        />
+      )}
     </main>
   );
 }
