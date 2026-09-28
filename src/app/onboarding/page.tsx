@@ -422,6 +422,7 @@ function Onboarding() {
 
   /** Vrai si la conversation n'a que le message d'accueil initial */
   const showChips =
+    !editId &&
     messages.length === 1 &&
     messages[0].role === "assistant" &&
     streamStatus === "idle";
@@ -721,7 +722,7 @@ function Onboarding() {
 
       {/* ── Panneau draft ─────────────────────────────────────────────────────── */}
       <aside
-        className={`shrink-0 flex-col gap-4 lg:flex lg:w-80 ${
+        className={`min-h-0 shrink-0 flex-col gap-4 overflow-y-auto pb-6 lg:flex lg:w-80 ${
           mobileTab === "digest" ? "flex w-full" : "hidden"
         }`}
       >

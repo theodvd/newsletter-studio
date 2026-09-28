@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { injectBaseTarget } from "@/lib/preview/base-target";
 import type { PreviewPayload } from "@/lib/preview/payload";
@@ -50,6 +51,13 @@ export function PreviewDialog({
   initialData,
   fetcher,
 }: PreviewDialogProps) {
+  // Rendu dans `document.body` (portail) : rendue dans la page, la fenêtre
+  // héritait de son contexte d'empilement et passait SOUS la barre de
+  // navigation fixe (z-50), qui mangeait son en-tête. Le portail n'existe
+  // qu'après le montage, côté client.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const [payload, setPayload] = useState<PreviewPayload | null>(initialData ?? null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -188,17 +196,17 @@ export function PreviewDialog({
     }
   }, [doFetch, sending, subscriptionId]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   const srcDoc = payload ? injectBaseTarget(payload.html) : undefined;
   const generationsLeft = payload?.generationsLeftToday ?? 0;
   const generateDisabled = generating || loading || generationsLeft <= 0;
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+          className="fixed inset-0 z-[100] flex items-stretch justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-6"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -310,6 +318,7 @@ export function PreviewDialog({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
