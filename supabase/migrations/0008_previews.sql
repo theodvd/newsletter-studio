@@ -39,10 +39,23 @@ begin;
 -- ---------------------------------------------------------------------------
 -- usage_log : élargir le check à 'chat' et 'preview'
 -- ---------------------------------------------------------------------------
--- Nom retrouvé dans 0000_schema.sql : c'est un check inline sur la colonne
--- `kind`, donc généré automatiquement par Postgres sous la forme
--- `<table>_<colonne>_check`.
-alter table public.usage_log drop constraint if exists usage_log_kind_check;
+-- Le check sur `kind` est un check inline, nommé automatiquement par
+-- Postgres. La base de production a été créée par les migrations de juin,
+-- pas par 0000_schema.sql : son nom réel n'est donc pas garanti. On supprime
+-- tout check de `usage_log` qui porte sur `kind`, quel que soit son nom,
+-- sinon l'ancien (« chat » seulement) survivrait et bloquerait 'preview'.
+do $$
+declare c record;
+begin
+  for c in
+    select conname from pg_constraint
+     where conrelid = 'public.usage_log'::regclass
+       and contype = 'c'
+       and pg_get_constraintdef(oid) ilike '%kind%'
+  loop
+    execute format('alter table public.usage_log drop constraint %I', c.conname);
+  end loop;
+end $$;
 alter table public.usage_log add constraint usage_log_kind_check
   check (kind in ('chat', 'preview'));
 
