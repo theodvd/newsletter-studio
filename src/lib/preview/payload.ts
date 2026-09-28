@@ -45,6 +45,17 @@ export type PreviewPayload = {
   /** Présent seulement quand `source` vaut `"generated"`. */
   createdAt?: string;
   generationsLeftToday: number;
+  /**
+   * Vrai pour un administrateur : `canGenerate` (côté route) le laisse déjà
+   * passer sans compter contre les quotas quotidiens, mais tant que ce champ
+   * n'existait pas, le dialogue se fiait uniquement à `generationsLeftToday`
+   * (le vrai reste, calculé pareil pour tout le monde, voir
+   * `generationsLeftToday` dans `limits.ts`) et désactivait le bouton
+   * « Generate » dès qu'il tombait à 0, bloquant un admin après une seule
+   * génération. Le dialogue ne doit plus jamais désactiver le bouton pour
+   * cette raison quand `unlimited` est vrai.
+   */
+  unlimited: boolean;
   canSend: boolean;
 };
 
@@ -71,6 +82,7 @@ export function buildPreviewPayload(input: BuildPreviewPayloadInput): PreviewPay
       html: template.renderEmail(renderCtx),
       createdAt: storedPreview.created_at,
       generationsLeftToday: left,
+      unlimited: counts.isAdmin,
       canSend: storedPreview.sent_count < limits.previewSendsPerPreview,
     };
   }
@@ -92,6 +104,7 @@ export function buildPreviewPayload(input: BuildPreviewPayloadInput): PreviewPay
     subject: edition.subject,
     html: template.renderEmail(renderCtx),
     generationsLeftToday: left,
+    unlimited: counts.isAdmin,
     canSend: false,
   };
 }

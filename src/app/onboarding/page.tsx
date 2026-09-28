@@ -8,7 +8,9 @@ import remarkGfm from "remark-gfm";
 import { costUsd, estimateRunCostUsd, formatUsd, runsPerWeek } from "@/lib/pricing";
 import { describeCron } from "@/lib/cron";
 import { resolveDesignForSubscription } from "@/lib/templates/design";
+import type { SectionId } from "@/lib/templates/types";
 import { PreviewDialog } from "@/components/preview-dialog";
+import { ConsentCard } from "@/components/consent-card";
 
 /**
  * Conversational onboarding with Lia.
@@ -65,6 +67,15 @@ const SUGGESTION_CHIPS = [
   "Design & UX trends on Slack",
   "Crypto markets, every morning",
 ];
+
+/** Libellés courts (sans « The »/« Le ») pour la ligne "Layout" du panneau. */
+const SECTION_SHORT_LABELS: Record<SectionId, string> = {
+  radar: "Radar",
+  deep_dive: "Deep Dive",
+  signal: "Signal",
+  number: "Number",
+  pick: "Pick",
+};
 
 const ease = [0.2, 0.8, 0.2, 1] as const;
 
@@ -134,8 +145,39 @@ function Onboarding() {
   const [mobileTab, setMobileTab] = useState<"chat" | "digest">("chat");
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  /** Choix de conservation de l'historique : null = jamais demandé (carte affichée). */
+  const [keepHistory, setKeepHistory] = useState<boolean | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
 
   const router = useRouter();
+
+  // ── Consentement de conservation de l'historique ────────────────────────────
+
+  useEffect(() => {
+    fetch("/api/settings/history")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.keepHistory !== "undefined") setKeepHistory(data.keepHistory);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function answerHistoryConsent(keep: boolean) {
+    if (historyBusy) return;
+    setHistoryBusy(true);
+    try {
+      const res = await fetch("/api/settings/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keep }),
+      });
+      if (res.ok) setKeepHistory(keep);
+    } catch {
+      // Pas grave : la carte reste affichée, l'utilisateur peut réessayer.
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
 
   // ── Scroll intelligent ──────────────────────────────────────────────────────
 
@@ -165,12 +207,34 @@ function Onboarding() {
   useEffect(() => {
     fetch(`/api/draft${editId ? `?id=${editId}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+      .then(async (data) => {
         if (data?.draft) {
           setDraft(data.draft);
           setSubscriptionId(data.draft.id);
           if (editId) {
+            // Historique sauvegardé (opt-in, voir `keep_history`) : chargé
+            // AVANT le message "You're editing...", pour reprendre la
+            // conversation là où elle s'était arrêtée.
+            let history: ChatMessage[] = [];
+            try {
+              const histRes = await fetch(`/api/conversation?subscriptionId=${encodeURIComponent(data.draft.id)}`);
+              if (histRes.ok) {
+                const histData = await histRes.json();
+                if (Array.isArray(histData.messages)) {
+                  history = histData.messages.filter(
+                    (m: unknown): m is ChatMessage =>
+                      !!m &&
+                      typeof m === "object" &&
+                      ((m as ChatMessage).role === "user" || (m as ChatMessage).role === "assistant") &&
+                      typeof (m as ChatMessage).content === "string"
+                  );
+                }
+              }
+            } catch {
+              // Pas grave : on repart sans historique, comme avant cette fonctionnalité.
+            }
             setMessages([
+              ...history,
               {
                 role: "assistant",
                 content: `You're editing **${data.draft.name}**${data.draft.status === "active" ? ", which is currently live" : ""}.\n\nTell me what you'd like to change (add or remove sources, adjust the schedule, the tone, or the focus) and I'll apply it right away.`,
@@ -495,6 +559,25 @@ function Onboarding() {
           </AnimatePresence>
         </header>
 
+        {/* Carte de consentement (historique) : non-bloquante, tant que le choix n'a pas été fait */}
+        <AnimatePresence>
+          {keepHistory === null && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease }}
+              className="shrink-0 overflow-hidden px-6 pt-4"
+            >
+              <ConsentCard
+                onKeep={() => answerHistoryConsent(true)}
+                onDecline={() => answerHistoryConsent(false)}
+                busy={historyBusy}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Fil de messages */}
         <div
           ref={scrollRef}
@@ -771,7 +854,20 @@ function Onboarding() {
                   <span className="text-slate-300">· {describeCron(draft.frequency_cron)}</span>
                 </p>
                 {draft.tone && <p>Tone: {draft.tone}</p>}
-                <p>Layout: {design?.template === "classic" ? "Classic" : "Editorial"}</p>
+                {design && (
+                  <p className="flex flex-wrap items-center gap-1.5">
+                    <span>Layout: {design.template === "classic" ? "Classic" : "Editorial"}</span>
+                    <span
+                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-white/20"
+                      style={{ backgroundColor: design.accent }}
+                      aria-hidden
+                      title={design.accent}
+                    />
+                    <span className="text-slate-300">
+                      · {design.sections.map((s) => SECTION_SHORT_LABELS[s]).join(", ")}
+                    </span>
+                  </p>
+                )}
               </div>
 
               <div>
@@ -882,6 +978,7 @@ function Onboarding() {
           onClose={() => setPreviewOpen(false)}
           subscriptionId={draft.id}
           subscriptionName={draft.name}
+          refreshKey={design ? JSON.stringify(design) : undefined}
         />
       )}
     </main>

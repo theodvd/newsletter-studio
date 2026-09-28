@@ -10,6 +10,11 @@ import { checkSpendAllowed } from "@/lib/usage";
 import { detectAbuse } from "@/lib/abuse/detect";
 import { reportAbuse } from "@/lib/abuse/report";
 import { LIMITS } from "@/lib/plan";
+import { decodeHtmlEntities } from "@/lib/text/decode-entities";
+import { resolveSubscriptionIdCandidates } from "@/lib/agent/resolve-subscription-id";
+import { mergeDesignInput, type SetDesignInput } from "@/lib/agent/set-design";
+import { resolveDesignForSubscription } from "@/lib/templates/design";
+import { capConversationHistory, filterVisibleMessages, MAX_HISTORY_MESSAGES } from "@/lib/agent/history";
 
 export const maxDuration = 120;
 
@@ -90,6 +95,29 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["name", "profile_prompt", "frequency_cron", "channel", "sources"],
     },
   },
+  {
+    name: "set_design",
+    description:
+      "Changes how the digest LOOKS: template, accent colour, header title, active sections (editorial only) and article images. All fields optional: only what's given changes, everything else keeps its current value. Call this whenever the user asks to change colours, layout, template, sections shown, or images. Never say design can't be changed: this tool does it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        subscription_id: { type: "string", description: "Id of the digest to update (omitted when editing the digest already in context)" },
+        template: { type: "string", enum: ["editorial", "classic"], description: "editorial: richer, sectioned layout. classic: a simple list of articles." },
+        accent: { type: "string", description: "Accent colour driving the header and highlights, hex format #RRGGBB" },
+        title: {
+          anyOf: [{ type: "string" }, { type: "null" }],
+          description: "Header title shown at the top of the digest. Pass null to fall back to the digest's name.",
+        },
+        sections: {
+          type: "array",
+          description: "Ordered list of active sections, editorial template only. Ignored by classic.",
+          items: { type: "string", enum: ["radar", "deep_dive", "signal", "number", "pick"] },
+        },
+        images: { type: "boolean", description: "Show article images in the digest" },
+      },
+    },
+  },
 ];
 
 type SaveConfigInput = {
@@ -111,7 +139,12 @@ type SaveConfigInput = {
   }>;
 };
 
-async function saveConfig(userId: string, userEmail: string, input: SaveConfigInput) {
+async function saveConfig(
+  userId: string,
+  userEmail: string,
+  input: SaveConfigInput,
+  knownSubscriptionId: string | null
+) {
   const supabase = createClient();
 
   // Cadence : validée ici, sur TOUS les chemins (création comme édition).
@@ -127,12 +160,15 @@ async function saveConfig(userId: string, userEmail: string, input: SaveConfigIn
   const destination = input.channel === "email" ? userEmail : input.destination || null;
   const row: Record<string, unknown> = {
     user_id: userId,
-    name: input.name,
+    // Le modèle écrit parfois l'entité HTML au lieu du caractère (ex. « React
+    // Native &amp; AI Dev Weekly ») : décodée avant stockage, jamais après
+    // coup, voir `src/lib/text/decode-entities.ts`.
+    name: decodeHtmlEntities(input.name),
     profile_prompt: input.profile_prompt,
     frequency_cron: input.frequency_cron,
     channel: input.channel,
     destination,
-    tone: input.tone ?? null,
+    tone: input.tone ? decodeHtmlEntities(input.tone) : input.tone ?? null,
     language: input.language ?? "fr",
     status: "draft",
     updated_at: new Date().toISOString(),
@@ -145,17 +181,37 @@ async function saveConfig(userId: string, userEmail: string, input: SaveConfigIn
   // propriété est vérifiée explicitement, à chaque requête.
   const db = createAdminClient();
 
-  let subscriptionId = input.subscription_id;
-  if (subscriptionId) {
-    const { data: existing } = await db
+  // Résolution de l'id à mettre à jour : voir `resolve-subscription-id.ts`.
+  // Corrige le bug du 24/09 (Lia omet subscription_id en édition -> nouveau
+  // brouillon créé au lieu d'une mise à jour) en retombant sur l'id déjà
+  // connu côté serveur pour ce tour, plutôt que de traiter l'omission comme
+  // une création.
+  const candidates = resolveSubscriptionIdCandidates({
+    inputId: input.subscription_id,
+    knownId: knownSubscriptionId,
+  });
+
+  let subscriptionId: string | undefined;
+  let existing: { destination: string | null; status: string } | null = null;
+  for (const candidate of candidates) {
+    const { data } = await db
       .from("subscriptions")
       .select("destination, status")
-      .eq("id", subscriptionId)
+      .eq("id", candidate)
       .eq("user_id", userId)
       .maybeSingle();
-    if (!existing) {
-      return { saved: false, error: "Digest not found." };
+    if (data) {
+      subscriptionId = candidate;
+      existing = data;
+      break;
     }
+  }
+
+  if (candidates.length > 0 && !subscriptionId) {
+    return { saved: false, error: "Digest not found." };
+  }
+
+  if (subscriptionId) {
     // Une veille active reste active : on édite en direct, pas de retour en draft
     if (existing && existing.status !== "draft") {
       delete row.status;
@@ -200,6 +256,63 @@ async function saveConfig(userId: string, userEmail: string, input: SaveConfigIn
   return { subscription_id: subscriptionId, saved: true };
 }
 
+/**
+ * Sauvegarde un changement de design (`set_design`) : merge avec le design
+ * actuel puis sanitisation complète par `resolveDesign` (voir
+ * `mergeDesignInput`), jamais d'écriture d'un input non sanitisé. Ne crée
+ * JAMAIS de veille : à la différence de `save_subscription_config`, un design
+ * ne s'applique qu'à un brouillon ou une veille qui existe déjà.
+ */
+async function setDesign(userId: string, input: SetDesignInput, knownSubscriptionId: string | null) {
+  const candidates = resolveSubscriptionIdCandidates({
+    inputId: input.subscription_id,
+    knownId: knownSubscriptionId,
+  });
+  if (candidates.length === 0) {
+    return { saved: false, error: "No digest to update yet: save the digest first." };
+  }
+
+  // Écriture serveur uniquement (voir 0007_design.sql) : `design` n'est jamais
+  // accordé en écriture au rôle `authenticated`, et la propriété est vérifiée
+  // explicitement puisque la clé service ignore le RLS.
+  const db = createAdminClient();
+
+  let subscriptionId: string | null = null;
+  let row: { design: unknown; frequency_cron: string; status: string } | null = null;
+  for (const candidate of candidates) {
+    const { data } = await db
+      .from("subscriptions")
+      .select("design, frequency_cron, status")
+      .eq("id", candidate)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (data) {
+      subscriptionId = candidate;
+      row = data;
+      break;
+    }
+  }
+  if (!subscriptionId || !row) {
+    return { saved: false, error: "Digest not found." };
+  }
+
+  // Le titre d'en-tête vient du modèle comme `name`/`tone` : mêmes entités
+  // HTML à décoder avant stockage (voir `saveConfig`).
+  const decodedTitle = input.title === undefined || input.title === null ? input.title : decodeHtmlEntities(input.title);
+
+  const current = resolveDesignForSubscription(row);
+  const resolved = mergeDesignInput(current, { ...input, title: decodedTitle }, row.frequency_cron);
+
+  const { error } = await db
+    .from("subscriptions")
+    .update({ design: resolved, updated_at: new Date().toISOString() })
+    .eq("id", subscriptionId)
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+
+  return { subscription_id: subscriptionId, saved: true, design: resolved };
+}
+
 /** Libellé lisible pour la pastille de statut dans le fil de chat. */
 function toolStatusLabel(name: string, input: Record<string, unknown>): string {
   switch (name) {
@@ -217,6 +330,8 @@ function toolStatusLabel(name: string, input: Record<string, unknown>): string {
       return "Finding similar sources…";
     case "save_subscription_config":
       return "Updating your digest…";
+    case "set_design":
+      return "Updating your digest's design…";
     default:
       return "Working…";
   }
@@ -226,7 +341,8 @@ async function runTool(
   name: string,
   input: Record<string, unknown>,
   userId: string,
-  userEmail: string
+  userEmail: string,
+  knownSubscriptionId: string | null
 ): Promise<unknown> {
   switch (name) {
     case "validate_source":
@@ -236,7 +352,9 @@ async function runTool(
     case "exa_find_similar":
       return exaFindSimilar(String(input.url));
     case "save_subscription_config":
-      return saveConfig(userId, userEmail, input as unknown as SaveConfigInput);
+      return saveConfig(userId, userEmail, input as unknown as SaveConfigInput, knownSubscriptionId);
+    case "set_design":
+      return setDesign(userId, input as unknown as SetDesignInput, knownSubscriptionId);
     default:
       return { error: `Tool inconnu: ${name}` };
   }
@@ -304,7 +422,7 @@ export async function POST(request: Request) {
     const { data: current } = await supabase
       .from("subscriptions")
       .select(
-        "id, name, status, channel, destination, destination_label, frequency_cron, tone, language, profile_prompt, sources(url, feed_url, title, type, validation_status, added_by)"
+        "id, name, status, channel, destination, destination_label, frequency_cron, tone, language, profile_prompt, design, sources(url, feed_url, title, type, validation_status, added_by)"
       )
       .eq("id", knownSubscriptionId)
       .maybeSingle();
@@ -314,6 +432,9 @@ export async function POST(request: Request) {
         destination: current.destination?.startsWith("https://hooks.slack.com")
           ? "(slack webhook connected)"
           : current.destination,
+        // Résolu plutôt que la colonne brute (peut être partielle ou absente
+        // sur une vieille ligne) : Lia raisonne sur le design RÉEL appliqué.
+        design: resolveDesignForSubscription(current),
       };
       configContext =
         `\n\nConfiguration actuelle de la veille (status: ${current.status}` +
@@ -328,16 +449,37 @@ export async function POST(request: Request) {
   const planContext = `\n\n## Limites du service\n- Veilles actives max : ${limits.maxActiveDigests}\n- Sources max par veille : ${limits.maxSources}\n- Envois max : 2 par jour (14 par semaine)\n\nIl n'y a pas de plan payant : chaque utilisateur branche sa propre clé API, et ses éditions tournent dessus. Configure DANS ces limites, sans jamais proposer d'abonnement.`;
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const conversation: Anthropic.MessageParam[] = [...messages];
+  // Borné aux MAX_HISTORY_MESSAGES derniers messages : reprendre une longue
+  // conversation sauvegardée (voir `profiles.keep_history`) ne doit pas faire
+  // renvoyer tout l'historique, et donc exploser le coût, à chaque tour.
+  const conversation: Anthropic.MessageParam[] = capConversationHistory(
+    Array.isArray(messages) ? messages : [],
+    MAX_HISTORY_MESSAGES
+  );
   let subscriptionId: string | null = knownSubscriptionId ?? null;
 
   // Cumul des tokens du tour (toutes itérations de tools incluses)
   const usage = { input_tokens: 0, output_tokens: 0 };
 
+  // Conservation optionnelle de la conversation (voir 0009_history.sql) :
+  // lue une fois par tour, avec la clé service puisque `keep_history` est
+  // hors des colonnes accordées au client (comme `design`, `destination`...).
+  const db = createAdminClient();
+  const { data: profileHistory } = await db
+    .from("profiles")
+    .select("keep_history")
+    .eq("id", user.id)
+    .maybeSingle();
+  const keepHistory = profileHistory?.keep_history === true;
+  /** Texte assistant visible, cumulé sur toutes les itérations de tools de CE tour. */
+  let assistantVisibleText = "";
+
   const systemPrompt =
     LIA_SYSTEM_PROMPT +
     planContext +
-    (subscriptionId ? `\n\nConfig en cours : subscription_id=${subscriptionId} (à passer à save_subscription_config pour les mises à jour).` : "") +
+    (subscriptionId
+      ? `\n\nConfig en cours : subscription_id=${subscriptionId} (à passer à save_subscription_config et set_design pour les mises à jour, mais peut aussi être omis : le serveur retombe sur cet id).`
+      : "") +
     configContext;
 
   // Le stream SSE est produit par un ReadableStream natif Web
@@ -428,6 +570,11 @@ export async function POST(request: Request) {
           const assistantContent: Anthropic.MessageParam["content"] = [];
           if (currentText) {
             (assistantContent as Array<{ type: "text"; text: string }>).push({ type: "text", text: currentText });
+            // Texte visible cumulé pour la sauvegarde de conversation (voir plus
+            // bas) : un même séparateur que celui inséré entre deux segments
+            // dans le flux SSE, pour que ce qui est stocké corresponde
+            // exactement à ce qui a été affiché dans une seule bulle assistant.
+            assistantVisibleText += (assistantVisibleText && !assistantVisibleText.endsWith("\n") ? "\n\n" : "") + currentText;
           }
           // Parse les inputs finaux des tools
           const parsedToolUses = toolUses.map((tu) => {
@@ -454,13 +601,22 @@ export async function POST(request: Request) {
           for (const tu of parsedToolUses) {
             let result: unknown;
             try {
-              result = await runTool(tu.name, tu.input, user.id, user.email ?? "");
+              // `subscriptionId` est celui déjà résolu par un save/set_design
+              // PRÉCÉDENT de ce même tour (ou celui connu du client) : un tool
+              // qui omet subscription_id retombe sur cette valeur plutôt que
+              // de créer un doublon (voir `resolve-subscription-id.ts`).
+              result = await runTool(tu.name, tu.input, user.id, user.email ?? "", subscriptionId);
 
-              // Après un save réussi : met à jour subscriptionId et recharge le draft
+              // Après un save ou un set_design réussi : met à jour
+              // subscriptionId et recharge le draft. `saved === true`
+              // seulement : un résultat d'échec est aussi un objet
+              // (`{ saved: false, error }`), sans quoi on écraserait
+              // subscriptionId par `undefined` sur un échec.
               if (
-                tu.name === "save_subscription_config" &&
+                (tu.name === "save_subscription_config" || tu.name === "set_design") &&
                 result &&
-                typeof result === "object"
+                typeof result === "object" &&
+                (result as { saved?: boolean }).saved === true
               ) {
                 const saved = result as { subscription_id: string };
                 subscriptionId = saved.subscription_id;
@@ -504,13 +660,49 @@ export async function POST(request: Request) {
         // par le compte qu'il mesure, sinon une ligne à cost_usd négatif annule
         // définitivement le plafond.
         if (usage.input_tokens + usage.output_tokens > 0) {
-          await createAdminClient().from("usage_log").insert({
+          await db.from("usage_log").insert({
             user_id: user.id,
             kind: "chat",
             input_tokens: usage.input_tokens,
             output_tokens: usage.output_tokens,
             cost_usd: costUsd(usage.input_tokens, usage.output_tokens).toFixed(4),
           });
+        }
+
+        // Sauvegarde de la conversation, opt-in (voir 0009_history.sql et
+        // `POST /api/settings/history`). Ne stocke jamais les tool_use/tool_result
+        // internes : seuls les messages user/assistant en texte, exactement ce
+        // que l'utilisateur a vu (voir `filterVisibleMessages`). Si l'utilisateur
+        // vient de dire "oui" au milieu de cette même conversation, rien n'est
+        // perdu : le prochain tour relira `keep_history` à jour et sauvegardera
+        // alors tout l'historique déjà accumulé côté client.
+        if (keepHistory && subscriptionId) {
+          // Vérification de propriété explicite : `subscriptionId` peut venir
+          // du client (`knownSubscriptionId`), la clé service ignorant le RLS.
+          const { data: owned } = await db
+            .from("subscriptions")
+            .select("id")
+            .eq("id", subscriptionId)
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (owned) {
+            const visibleMessages = filterVisibleMessages([
+              ...(Array.isArray(messages) ? messages : []),
+              ...(assistantVisibleText ? [{ role: "assistant", content: assistantVisibleText }] : []),
+            ]);
+            if (visibleMessages.length > 0) {
+              await db.from("conversations").upsert(
+                {
+                  subscription_id: subscriptionId,
+                  user_id: user.id,
+                  messages: visibleMessages,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "subscription_id" }
+              );
+            }
+          }
         }
 
         // Événement final

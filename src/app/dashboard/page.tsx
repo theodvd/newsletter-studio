@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { Reveal, Stagger, StaggerItem } from "@/components/reveal";
 import { SubscriptionCard } from "./subscription-card";
 import { ApiKeyPanel } from "./api-key-panel";
+import { HistoryPanel } from "./history-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,11 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const supabase = createClient();
 
-  const [{ data: subscriptions }, { data: profile }] = await Promise.all([
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const [{ data: subscriptions }, { data: profile }, { data: historyProfile }] = await Promise.all([
     supabase
       .from("subscriptions")
       .select(
@@ -22,6 +27,13 @@ export default async function DashboardPage() {
       .neq("status", "draft")
       .order("created_at", { ascending: false }),
     supabase.from("profiles").select("llm_provider, llm_key_hint").maybeSingle(),
+    // `keep_history` est server-only (voir 0009_history.sql) : hors des
+    // colonnes accordées à `authenticated`, une lecture avec le client à
+    // session échouerait. Composant serveur, jamais exposé au navigateur :
+    // la clé service reste sûre ici, avec un filtre de propriété explicite.
+    user
+      ? createAdminClient().from("profiles").select("keep_history").eq("id", user.id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   return (
@@ -51,6 +63,11 @@ export default async function DashboardPage() {
           provider={profile?.llm_provider ?? null}
           hint={profile?.llm_key_hint ?? null}
         />
+      </Reveal>
+
+      {/* Conservation de l'historique de conversation avec Lia (opt-in) */}
+      <Reveal delay={0.08}>
+        <HistoryPanel initialKeepHistory={historyProfile?.keep_history ?? null} />
       </Reveal>
 
       {!subscriptions?.length ? (

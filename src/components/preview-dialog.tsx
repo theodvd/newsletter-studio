@@ -28,6 +28,15 @@ export type PreviewDialogProps = {
   initialData?: PreviewPayload;
   /** Remplace `fetch` global : sert au harnais de QA visuelle hors-ligne. */
   fetcher?: Fetcher;
+  /**
+   * Change à chaque fois que le design de la veille change (voir l'appelant :
+   * typiquement `JSON.stringify(design)`). Si le dialogue est déjà ouvert
+   * quand Lia applique un nouveau design (`set_design`), ce changement
+   * déclenche un rechargement de l'aperçu : le rendu dépend du design
+   * ACTUEL, il doit donc refléter le dernier choisi sans que l'utilisateur
+   * ait à fermer et rouvrir la fenêtre.
+   */
+  refreshKey?: string | number;
 };
 
 const ease = [0.2, 0.8, 0.2, 1] as const;
@@ -50,6 +59,7 @@ export function PreviewDialog({
   subscriptionName,
   initialData,
   fetcher,
+  refreshKey,
 }: PreviewDialogProps) {
   // Rendu dans `document.body` (portail) : rendue dans la page, la fenêtre
   // héritait de son contexte d'empilement et passait SOUS la barre de
@@ -76,6 +86,12 @@ export function PreviewDialog({
   const doFetch = useMemo<Fetcher>(() => fetcher ?? fetch, [fetcher]);
 
   // ── Chargement initial (ou reprise de `initialData`, sans réseau) ────────
+  // `refreshKey` déclenche aussi ce chargement : si le dialogue est déjà
+  // ouvert quand le design change (voir `PreviewDialogProps.refreshKey`), on
+  // veut la même requête sans repasser par un cycle fermeture/ouverture. Dans
+  // ce cas précis (un payload est déjà affiché), le rechargement est
+  // silencieux : pas de "Loading preview..." qui remplacerait l'aperçu déjà
+  // visible pour un simple changement de couleur.
   useEffect(() => {
     if (!open) return;
     if (initialData) {
@@ -83,8 +99,11 @@ export function PreviewDialog({
       return;
     }
     let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
+    const silent = payload !== null;
+    if (!silent) {
+      setLoading(true);
+      setLoadError(null);
+    }
     doFetch(`/api/preview?subscriptionId=${encodeURIComponent(subscriptionId)}`)
       .then(async (res) => {
         const data = await res.json();
@@ -93,16 +112,16 @@ export function PreviewDialog({
         setPayload(data);
       })
       .catch((e) => {
-        if (!cancelled) setLoadError(e instanceof Error ? e.message : "Could not load the preview.");
+        if (!cancelled && !silent) setLoadError(e instanceof Error ? e.message : "Could not load the preview.");
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !silent) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, subscriptionId, initialData]);
+  }, [open, subscriptionId, initialData, refreshKey]);
 
   // ── Escape + focus trap ────────────────────────────────────────────────
   useEffect(() => {
@@ -200,7 +219,11 @@ export function PreviewDialog({
 
   const srcDoc = payload ? injectBaseTarget(payload.html) : undefined;
   const generationsLeft = payload?.generationsLeftToday ?? 0;
-  const generateDisabled = generating || loading || generationsLeft <= 0;
+  const unlimited = payload?.unlimited ?? false;
+  // Un admin contourne les quotas quotidiens côté serveur (`canGenerate`) :
+  // le bouton ne doit donc jamais se désactiver à cause du compteur, qui
+  // reste à 0 pour lui comme pour tout le monde (voir `generationsLeftToday`).
+  const generateDisabled = generating || loading || (!unlimited && generationsLeft <= 0);
 
   return createPortal(
     <AnimatePresence>
@@ -296,7 +319,9 @@ export function PreviewDialog({
                     <p className="mt-2 text-xs text-slate-500">
                       {generating
                         ? `${elapsed}s elapsed`
-                        : `Uses real articles from your sources. About a minute. ${generationsLeft} left today.`}
+                        : unlimited
+                          ? "Uses real articles from your sources. About a minute. Unlimited (admin)."
+                          : `Uses real articles from your sources. About a minute. ${generationsLeft} left today.`}
                     </p>
                     {generateError && <p className="mt-1 text-xs text-red-400">{generateError}</p>}
                   </div>

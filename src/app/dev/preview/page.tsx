@@ -43,6 +43,7 @@ export default function DevPreviewPage() {
         subject: edition.subject,
         html,
         generationsLeftToday: 1,
+        unlimited: false,
         canSend: false,
       }}
     />

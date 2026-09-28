@@ -98,4 +98,36 @@ describe("buildPreviewPayload", () => {
     });
     expect(payload.generationsLeftToday).toBe(0);
   });
+
+  it("unlimited est faux pour un utilisateur normal, même sans génération restante", () => {
+    const payload = buildPreviewPayload({
+      sub: editorialSub,
+      storedPreview: null,
+      now: new Date("2026-09-25T08:00:00Z"),
+      counts: { countSubscription24h: 1, countUser24h: 0, isAdmin: false },
+      limits: LIMITS,
+    });
+    expect(payload.unlimited).toBe(false);
+  });
+
+  it("unlimited est vrai pour un admin, sans échange sample ou generated", () => {
+    const sample = buildPreviewPayload({
+      sub: editorialSub,
+      storedPreview: null,
+      now: new Date("2026-09-25T08:00:00Z"),
+      counts: { countSubscription24h: 1, countUser24h: 3, isAdmin: true },
+      limits: LIMITS,
+    });
+    expect(sample.unlimited).toBe(true);
+
+    const edition: Edition = { subject: "Mon sujet", intro: "Intro", items: [] };
+    const generated = buildPreviewPayload({
+      sub: classicSub,
+      storedPreview: { edition, created_at: "2026-09-24T10:00:00Z", sent_count: 0 },
+      now: new Date("2026-09-25T08:00:00Z"),
+      counts: { countSubscription24h: 1, countUser24h: 3, isAdmin: true },
+      limits: LIMITS,
+    });
+    expect(generated.unlimited).toBe(true);
+  });
 });

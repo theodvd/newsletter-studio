@@ -34,6 +34,17 @@ Le moteur tournait initialement dans n8n, en 22 nœuds. Il a été ramené dans 
 dépôt : un nœud Code n'est ni typé, ni testable, ni relisible en revue, et son
 bac à sable réserve des surprises. Tout est maintenant du TypeScript ordinaire.
 
+## Confidentialité
+
+Les conversations avec Lia ne sont pas conservées par défaut. Vous choisissez,
+depuis une petite carte dans le chat d'onboarding (ou à tout moment depuis
+votre dashboard), de garder ou non l'historique de vos échanges, pour
+reprendre là où vous en étiez lors d'une édition ; désactiver l'option
+supprime ce qui était déjà enregistré. Seule exception : les conversations
+signalées comme anormales (tentative de détournement de l'agent, recherche de
+secrets, sondage du réseau interne, voir `src/lib/abuse/detect.ts`) restent
+conservées 30 jours, pour permettre d'enquêter sur un abus.
+
 ## Installation
 
 ### 1. Base de données
