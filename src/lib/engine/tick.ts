@@ -46,7 +46,36 @@ export type TickReport = {
   outcomes: RunOutcome[];
 };
 
-/** Exécute toutes les veilles dues. Les exécutions sont séquentielles, pour rester prévisible. */
+/**
+ * Éditions par lot du tick : les éditions editorial sont plus longues à
+ * générer (deep dive compris), un enchaînement strictement séquentiel
+ * risquerait de dépasser le budget de 280 s du cron sur un tick chargé.
+ */
+const TICK_CONCURRENCY = 3;
+
+/**
+ * Exécute `worker` sur chaque élément de `items`, au plus `limit` en même
+ * temps, en renvoyant les résultats DANS L'ORDRE d'origine (contrairement à
+ * `Promise.all` sur des promesses démarrées en rafale, ici le lancement est
+ * étalé : au plus `limit` exécutions en vol à tout instant).
+ */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, worker: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+
+  async function runNext(): Promise<void> {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await worker(items[index]);
+    }
+  }
+
+  const lanes = Array.from({ length: Math.min(limit, items.length) }, () => runNext());
+  await Promise.all(lanes);
+  return results;
+}
+
+/** Exécute toutes les veilles dues, avec une concurrence limitée (voir `TICK_CONCURRENCY`). */
 export async function runTick(now: Date = new Date()): Promise<TickReport> {
   const [subscriptions, attempts] = await Promise.all([loadActiveSubscriptions(), lastAttempts()]);
 
@@ -67,20 +96,15 @@ export async function runTick(now: Date = new Date()): Promise<TickReport> {
     if (purged > 0) console.log(`[engine] purge : ${purged} conversation(s) signalée(s) expirée(s)`);
   }
 
-  const outcomes: RunOutcome[] = [];
-  for (const id of dueIds) {
+  const outcomes = await mapWithConcurrency(dueIds, TICK_CONCURRENCY, async (id): Promise<RunOutcome> => {
     try {
-      outcomes.push(await runSubscription(id, now));
+      return await runSubscription(id, now);
     } catch (e) {
       // Filet de sécurité : runSubscription ne doit jamais lever, mais un tick
       // ne doit surtout pas s'arrêter sur une veille.
-      outcomes.push({
-        subscriptionId: id,
-        status: "error",
-        reason: e instanceof Error ? e.message : "erreur inattendue",
-      });
+      return { subscriptionId: id, status: "error", reason: e instanceof Error ? e.message : "erreur inattendue" };
     }
-  }
+  });
 
   return { checked: subscriptions.length, due: dueIds.length, outcomes };
 }

@@ -96,6 +96,16 @@ digests on its own key, but only for the specific accounts listed in
 no one: there is no general free tier hidden behind it. It exists for
 migrating pre-BYOK digests and for local development.
 
+## Privacy
+
+Conversations with Lia are not stored by default. You choose, from a small
+card in the onboarding chat (or anytime from your dashboard), whether to keep
+your chat history so you can pick up where you left off when you edit a
+digest; turning it off deletes what was already saved. The one exception:
+conversations flagged as abnormal (an attempt to hijack the agent, look for
+secrets, or probe the internal network, see `src/lib/abuse/detect.ts`) are
+kept for 30 days regardless, to investigate misuse.
+
 ## Install
 
 ### 1. Database

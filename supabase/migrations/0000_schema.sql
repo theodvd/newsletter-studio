@@ -23,6 +23,10 @@ create table if not exists public.profiles (
   llm_provider      text,
   llm_key_encrypted text,
   llm_key_hint      text,
+  -- Conservation de l'historique de conversation avec Lia, opt-in (voir
+  -- 0009_history.sql) : null = jamais demandé, false = refusé, true = accepté.
+  -- Server-only : jamais accordée en écriture à `authenticated` plus bas.
+  keep_history      boolean,
   constraint profiles_llm_provider_check
     check (llm_provider is null or llm_provider in ('anthropic', 'openai'))
 );
@@ -40,6 +44,11 @@ create table if not exists public.subscriptions (
   tone              text,
   language          text not null default 'fr',
   status            text not null default 'draft' check (status in ('draft', 'active', 'paused')),
+  -- Réglages de mise en page (template, accent, sections...) : voir
+  -- `resolveDesign` côté code et 0007_design.sql pour l'historique de cette
+  -- colonne. Serveur-only : ne JAMAIS l'ajouter au grant update ci-dessous.
+  design            jsonb not null default '{"template":"editorial"}'::jsonb
+    constraint subscriptions_design_is_object check (jsonb_typeof(design) = 'object'),
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
@@ -95,10 +104,13 @@ create index if not exists delivered_items_subscription_delivered_idx
   on public.delivered_items (subscription_id, delivered_at desc);
 
 -- ── consommation de l'onboarding (clé de l'hébergeur) ───────────────────────
+-- `kind` couvre la conversation d'onboarding ('chat') et une génération
+-- d'aperçu réelle ('preview', voir 0008_previews.sql) : les deux tournent sur
+-- la clé de l'hébergeur et comptent dans le même plafond hebdomadaire.
 create table if not exists public.usage_log (
   id            bigint generated always as identity primary key,
   user_id       uuid not null references public.profiles(id) on delete cascade,
-  kind          text not null default 'chat' check (kind = 'chat'),
+  kind          text not null default 'chat' check (kind in ('chat', 'preview')),
   input_tokens  integer not null default 0,
   output_tokens integer not null default 0,
   cost_usd      numeric not null default 0 check (cost_usd >= 0),
@@ -106,6 +118,46 @@ create table if not exists public.usage_log (
 );
 
 create index if not exists usage_log_user_created_idx on public.usage_log (user_id, created_at desc);
+
+-- ── aperçu d'une veille avant lancement ─────────────────────────────────────
+-- Voir 0008_previews.sql pour le contexte complet : stocke l'ÉDITION générée
+-- (le JSON), pour qu'un changement de design ultérieur la re-rende sans
+-- rappeler le modèle. Table serveur-only : RLS activé sans aucune politique,
+-- tous les privilèges de table retirés à `anon`/`authenticated` plus bas.
+create table if not exists public.previews (
+  id              uuid primary key default gen_random_uuid(),
+  subscription_id uuid not null references public.subscriptions(id) on delete cascade,
+  user_id         uuid not null references public.profiles(id) on delete cascade,
+  edition         jsonb not null,
+  input_tokens    int not null default 0,
+  output_tokens   int not null default 0,
+  cost_usd        numeric not null default 0 check (cost_usd >= 0),
+  sent_count      int not null default 0,
+  last_sent_at    timestamptz,
+  created_at      timestamptz not null default now()
+);
+
+create index if not exists previews_subscription_created_idx
+  on public.previews (subscription_id, created_at desc);
+create index if not exists previews_user_created_idx
+  on public.previews (user_id, created_at desc);
+
+-- ── historique de conversation avec Lia, opt-in ─────────────────────────────
+-- Voir 0009_history.sql pour le contexte complet : une ligne par veille, les
+-- messages user/assistant déjà affichés à l'écran uniquement (jamais un
+-- tool_use/tool_result interne, voir `filterVisibleMessages` côté code).
+-- Table serveur-only : RLS activé sans aucune politique, tous les privilèges
+-- de table retirés à `anon`/`authenticated` plus bas, comme `previews`.
+create table if not exists public.conversations (
+  id              uuid primary key default gen_random_uuid(),
+  subscription_id uuid not null references public.subscriptions(id) on delete cascade,
+  user_id         uuid not null references public.profiles(id) on delete cascade,
+  messages        jsonb not null,
+  updated_at      timestamptz not null default now(),
+  unique (subscription_id)
+);
+
+create index if not exists conversations_user_updated_idx on public.conversations (user_id, updated_at desc);
 
 -- ============================================================================
 -- Création automatique du profil à l'inscription
@@ -152,6 +204,12 @@ alter table public.sources         enable row level security;
 alter table public.deliveries      enable row level security;
 alter table public.delivered_items enable row level security;
 alter table public.usage_log       enable row level security;
+-- `previews` et `conversations` : RLS activé SANS AUCUNE politique (tables
+-- serveur-only, voir 0008_previews.sql et 0009_history.sql) : aucune ligne
+-- n'est donc jamais visible ni écrivable via PostgREST, quelle que soit la
+-- clé côté client.
+alter table public.previews        enable row level security;
+alter table public.conversations   enable row level security;
 
 drop policy if exists "own profile" on public.profiles;
 create policy "own profile" on public.profiles
@@ -204,3 +262,13 @@ grant  update (name, profile_prompt, tone, language) on public.subscriptions to 
 -- session, et le RLS y garantit déjà la propriété.
 
 revoke insert, update, delete on public.usage_log from authenticated, anon;
+
+-- Tables serveur-only : aucun privilège, sur aucune colonne (lues et écrites
+-- uniquement par les routes API avec la clé service, après vérification de
+-- propriété côté session). Voir 0008_previews.sql et 0009_history.sql.
+revoke all on public.previews from anon, authenticated;
+revoke all on public.conversations from anon, authenticated;
+
+-- `keep_history` (sur `profiles`) reste server-only elle aussi : le GRANT
+-- UPDATE ci-dessus (`full_name, job_role`) ne l'inclut délibérément pas.
+-- Écrite uniquement par `POST /api/settings/history`. Voir 0009_history.sql.

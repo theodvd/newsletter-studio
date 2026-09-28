@@ -29,6 +29,16 @@ export type Limits = {
    */
   weeklyCapUsdPerUser: number;
   weeklyCapUsdGlobal: number;
+  /**
+   * Aperçu (étape 2) : générations RÉELLES (dry-run payé par l'hébergeur)
+   * autorisées par période glissante de 24h, par veille et par utilisateur.
+   * Les admins (voir `src/lib/admin.ts`) ne comptent pas contre ces deux
+   * bornes, mais restent soumis aux plafonds de dépense ci-dessus.
+   */
+  previewDailyPerSubscription: number;
+  previewDailyPerUser: number;
+  /** Envois de test (« Send it to me ») autorisés par édition d'aperçu stockée. */
+  previewSendsPerPreview: number;
 };
 
 /** Lecture d'un nombre depuis l'environnement, avec valeur de repli. */
@@ -44,4 +54,7 @@ export const LIMITS: Limits = {
   maxSources: envNumber("LIMIT_SOURCES_PER_DIGEST", 12),
   weeklyCapUsdPerUser: envNumber("WEEKLY_CAP_USD_PER_USER", 1),
   weeklyCapUsdGlobal: envNumber("WEEKLY_CAP_USD_GLOBAL", 10),
+  previewDailyPerSubscription: envNumber("PREVIEW_DAILY_PER_SUBSCRIPTION", 1),
+  previewDailyPerUser: envNumber("PREVIEW_DAILY_PER_USER", 3),
+  previewSendsPerPreview: envNumber("PREVIEW_SENDS_PER_PREVIEW", 3),
 };

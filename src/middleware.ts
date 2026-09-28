@@ -29,16 +29,32 @@ export async function middleware(request: NextRequest) {
     }
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // `getUser()` appelle Supabase Auth par le réseau : en dev hors-ligne
+  // (Supabase pointé vers une adresse morte, voir le harnais `/dev/preview`),
+  // cet appel rejette. Sans ce filet, une exception ici casserait TOUTES les
+  // pages, y compris les routes publiques : on retombe sur "non connecté",
+  // jamais sur un utilisateur inventé.
+  let user: { email?: string | null } | null = null;
+  try {
+    const {
+      data: { user: sessionUser },
+    } = await supabase.auth.getUser();
+    user = sessionUser;
+  } catch {
+    user = null;
+  }
 
   const isPublic =
     request.nextUrl.pathname.startsWith("/login") ||
     request.nextUrl.pathname.startsWith("/auth") ||
     // Le moteur est déclenché par un cron système, pas par une session :
     // la route porte sa propre authentification (secret en Bearer).
-    request.nextUrl.pathname.startsWith("/api/cron");
+    request.nextUrl.pathname.startsWith("/api/cron") ||
+    // Harnais de QA visuelle hors-ligne (`/dev/preview`) : jamais en
+    // production, où la page elle-même appelle `notFound()`. Public ici
+    // uniquement pour que le serveur de dev offline (Supabase injoignable)
+    // puisse la servir sans session.
+    (request.nextUrl.pathname.startsWith("/dev") && process.env.NODE_ENV !== "production");
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();

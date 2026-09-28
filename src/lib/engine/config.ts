@@ -5,8 +5,10 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server";
+import { allItems } from "@/lib/templates";
+import type { Edition } from "@/lib/templates/types";
 import { normalizeUrl } from "./parse";
-import type { Article, Digest, SubscriptionConfig } from "./types";
+import type { Article, SubscriptionConfig } from "./types";
 
 /** Nombre d'entrées d'historique chargées pour la déduplication. */
 const DEDUP_HISTORY_SIZE = 800;
@@ -57,15 +59,20 @@ export async function logDelivery(params: {
   subscriptionId: string;
   status: "success" | "error";
   error?: string | null;
-  digest: Digest | null;
+  edition: Edition | null;
   articles: Article[];
 }): Promise<void> {
   const db = createAdminClient();
 
+  // Aplati : tous les articles cités, toutes sections et tous templates
+  // confondus (voir `allItems`), pour ne pas coupler ce log à la forme
+  // (`items` vs `radar`/`deep_dive`/...) d'un template en particulier.
+  const items = params.edition ? allItems(params.edition) : [];
+
   const { error: deliveryError } = await db.from("deliveries").insert({
     subscription_id: params.subscriptionId,
     status: params.status,
-    items: params.digest?.items ?? [],
+    items,
     error: params.error ?? null,
   });
   if (deliveryError) {
@@ -77,7 +84,7 @@ export async function logDelivery(params: {
   // On ne journalise que les articles réellement retenus par le modèle, en
   // retrouvant l'URL d'origine du flux à partir de l'URL renvoyée.
   const byNorm = new Map(params.articles.map((a) => [a.url_norm, a]));
-  const rows = (params.digest?.items ?? [])
+  const rows = items
     .map((item) => {
       const norm = normalizeUrl(item.url);
       if (!norm) return null;

@@ -5,8 +5,12 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ENGINE_RUN_COST_USD, costUsd, formatUsd, runsPerWeek } from "@/lib/pricing";
+import { costUsd, estimateRunCostUsd, formatUsd, runsPerWeek } from "@/lib/pricing";
 import { describeCron } from "@/lib/cron";
+import { resolveDesignForSubscription } from "@/lib/templates/design";
+import type { SectionId } from "@/lib/templates/types";
+import { PreviewDialog } from "@/components/preview-dialog";
+import { ConsentCard } from "@/components/consent-card";
 
 /**
  * Conversational onboarding with Lia.
@@ -43,6 +47,8 @@ type Draft = {
   tone: string | null;
   language: string;
   status: string;
+  /** Réglages de mise en page (colonne `design`) : voir `resolveDesignForSubscription`. */
+  design?: unknown;
   sources: DraftSource[];
 };
 
@@ -61,6 +67,15 @@ const SUGGESTION_CHIPS = [
   "Design & UX trends on Slack",
   "Crypto markets, every morning",
 ];
+
+/** Libellés courts (sans « The »/« Le ») pour la ligne "Layout" du panneau. */
+const SECTION_SHORT_LABELS: Record<SectionId, string> = {
+  radar: "Radar",
+  deep_dive: "Deep Dive",
+  signal: "Signal",
+  number: "Number",
+  pick: "Pick",
+};
 
 const ease = [0.2, 0.8, 0.2, 1] as const;
 
@@ -129,8 +144,40 @@ function Onboarding() {
   /** Onglet mobile actif : "chat" | "digest" */
   const [mobileTab, setMobileTab] = useState<"chat" | "digest">("chat");
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  /** Choix de conservation de l'historique : null = jamais demandé (carte affichée). */
+  const [keepHistory, setKeepHistory] = useState<boolean | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
 
   const router = useRouter();
+
+  // ── Consentement de conservation de l'historique ────────────────────────────
+
+  useEffect(() => {
+    fetch("/api/settings/history")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.keepHistory !== "undefined") setKeepHistory(data.keepHistory);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function answerHistoryConsent(keep: boolean) {
+    if (historyBusy) return;
+    setHistoryBusy(true);
+    try {
+      const res = await fetch("/api/settings/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keep }),
+      });
+      if (res.ok) setKeepHistory(keep);
+    } catch {
+      // Pas grave : la carte reste affichée, l'utilisateur peut réessayer.
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
 
   // ── Scroll intelligent ──────────────────────────────────────────────────────
 
@@ -160,12 +207,34 @@ function Onboarding() {
   useEffect(() => {
     fetch(`/api/draft${editId ? `?id=${editId}` : ""}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+      .then(async (data) => {
         if (data?.draft) {
           setDraft(data.draft);
           setSubscriptionId(data.draft.id);
           if (editId) {
+            // Historique sauvegardé (opt-in, voir `keep_history`) : chargé
+            // AVANT le message "You're editing...", pour reprendre la
+            // conversation là où elle s'était arrêtée.
+            let history: ChatMessage[] = [];
+            try {
+              const histRes = await fetch(`/api/conversation?subscriptionId=${encodeURIComponent(data.draft.id)}`);
+              if (histRes.ok) {
+                const histData = await histRes.json();
+                if (Array.isArray(histData.messages)) {
+                  history = histData.messages.filter(
+                    (m: unknown): m is ChatMessage =>
+                      !!m &&
+                      typeof m === "object" &&
+                      ((m as ChatMessage).role === "user" || (m as ChatMessage).role === "assistant") &&
+                      typeof (m as ChatMessage).content === "string"
+                  );
+                }
+              }
+            } catch {
+              // Pas grave : on repart sans historique, comme avant cette fonctionnalité.
+            }
             setMessages([
+              ...history,
               {
                 role: "assistant",
                 content: `You're editing **${data.draft.name}**${data.draft.status === "active" ? ", which is currently live" : ""}.\n\nTell me what you'd like to change (add or remove sources, adjust the schedule, the tone, or the focus) and I'll apply it right away.`,
@@ -410,11 +479,14 @@ function Onboarding() {
   // ── Calculs ────────────────────────────────────────────────────────────────
 
   const conversationCost = costUsd(tokens.input, tokens.output);
+  const design = useMemo(() => (draft ? resolveDesignForSubscription(draft) : null), [draft]);
   const weeklyRuns = useMemo(() => (draft ? runsPerWeek(draft.frequency_cron) : 0), [draft]);
-  const weeklyCost = weeklyRuns * ENGINE_RUN_COST_USD;
+  const perRunCost = design ? estimateRunCostUsd(design) : 0;
+  const weeklyCost = weeklyRuns * perRunCost;
 
   /** Vrai si la conversation n'a que le message d'accueil initial */
   const showChips =
+    !editId &&
     messages.length === 1 &&
     messages[0].role === "assistant" &&
     streamStatus === "idle";
@@ -486,6 +558,25 @@ function Onboarding() {
             )}
           </AnimatePresence>
         </header>
+
+        {/* Carte de consentement (historique) : non-bloquante, tant que le choix n'a pas été fait */}
+        <AnimatePresence>
+          {keepHistory === null && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease }}
+              className="shrink-0 overflow-hidden px-6 pt-4"
+            >
+              <ConsentCard
+                onKeep={() => answerHistoryConsent(true)}
+                onDecline={() => answerHistoryConsent(false)}
+                busy={historyBusy}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Fil de messages */}
         <div
@@ -714,7 +805,7 @@ function Onboarding() {
 
       {/* ── Panneau draft ─────────────────────────────────────────────────────── */}
       <aside
-        className={`shrink-0 flex-col gap-4 lg:flex lg:w-80 ${
+        className={`min-h-0 shrink-0 flex-col gap-4 overflow-y-auto pb-6 lg:flex lg:w-80 ${
           mobileTab === "digest" ? "flex w-full" : "hidden"
         }`}
       >
@@ -763,6 +854,20 @@ function Onboarding() {
                   <span className="text-slate-300">· {describeCron(draft.frequency_cron)}</span>
                 </p>
                 {draft.tone && <p>Tone: {draft.tone}</p>}
+                {design && (
+                  <p className="flex flex-wrap items-center gap-1.5">
+                    <span>Layout: {design.template === "classic" ? "Classic" : "Editorial"}</span>
+                    <span
+                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-full border border-white/20"
+                      style={{ backgroundColor: design.accent }}
+                      aria-hidden
+                      title={design.accent}
+                    />
+                    <span className="text-slate-300">
+                      · {design.sections.map((s) => SECTION_SHORT_LABELS[s]).join(", ")}
+                    </span>
+                  </p>
+                )}
               </div>
 
               <div>
@@ -801,12 +906,29 @@ function Onboarding() {
                   Estimated running cost:{" "}
                   <span className="text-slate-300">~{formatUsd(weeklyCost)}/week</span>{" "}
                   ({weeklyRuns} {weeklyRuns > 1 ? "deliveries" : "delivery"}/week, ~
-                  {formatUsd(ENGINE_RUN_COST_USD)} each)
+                  {formatUsd(perRunCost)} each)
                 </p>
               </div>
             </motion.div>
           )}
         </div>
+
+        {/* Bouton Preview, au-dessus du bouton Launch */}
+        <AnimatePresence>
+          {draft && (
+            <motion.button
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.5, ease }}
+              onClick={() => setPreviewOpen(true)}
+              aria-label="Preview my digest"
+              className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-3 font-display text-sm font-semibold text-slate-200 transition-colors hover:border-accent/40 hover:text-white"
+            >
+              Preview
+            </motion.button>
+          )}
+        </AnimatePresence>
 
         {/* Bouton Launch / live indicator */}
         <AnimatePresence>
@@ -849,6 +971,16 @@ function Onboarding() {
           ) : null}
         </AnimatePresence>
       </aside>
+
+      {draft && (
+        <PreviewDialog
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          subscriptionId={draft.id}
+          subscriptionName={draft.name}
+          refreshKey={design ? JSON.stringify(design) : undefined}
+        />
+      )}
     </main>
   );
 }

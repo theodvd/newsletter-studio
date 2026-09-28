@@ -40,3 +40,6 @@ next-env.d.ts
 
 # Runbook personnel (adresses de serveur, identifiants d infra)
 RUNBOOK.local.md
+
+# Aperçus locaux des templates (scripts/preview-email.ts, scripts/dry-run.ts)
+/preview/

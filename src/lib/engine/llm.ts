@@ -34,8 +34,15 @@ export const DEFAULT_MODELS: Record<LlmProvider, string> = {
   openai: "gpt-5",
 };
 
-const MAX_TOKENS = 3000;
-const TIMEOUT_MS = 120000;
+const DEFAULT_MAX_TOKENS = 3000;
+const DEFAULT_TIMEOUT_MS = 120000;
+
+export type GenerateOptions = {
+  /** Plafond de tokens de sortie ; par défaut celui d'avant les templates (3000). */
+  maxTokens?: number;
+  /** Délai avant abandon ; l'editorial, plus long à générer, en a besoin de plus. */
+  timeoutMs?: number;
+};
 
 /** Vérifie la forme d'une clé avant de la stocker, pour un message utile tout de suite. */
 export function looksLikeValidKey(provider: LlmProvider, key: string): boolean {
@@ -45,7 +52,13 @@ export function looksLikeValidKey(provider: LlmProvider, key: string): boolean {
   return k.startsWith("sk-") || k.startsWith("gsk_") || k.startsWith("or-");
 }
 
-async function callAnthropic(creds: LlmCredentials, system: string, user: string): Promise<LlmResult> {
+async function callAnthropic(
+  creds: LlmCredentials,
+  system: string,
+  user: string,
+  maxTokens: number,
+  timeoutMs: number
+): Promise<LlmResult> {
   const model = creds.model || DEFAULT_MODELS.anthropic;
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -54,10 +67,10 @@ async function callAnthropic(creds: LlmCredentials, system: string, user: string
       "anthropic-version": "2023-06-01",
       "x-api-key": creds.apiKey,
     },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
       model,
-      max_tokens: MAX_TOKENS,
+      max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: user }],
     }),
@@ -81,7 +94,13 @@ async function callAnthropic(creds: LlmCredentials, system: string, user: string
   };
 }
 
-async function callOpenAiCompatible(creds: LlmCredentials, system: string, user: string): Promise<LlmResult> {
+async function callOpenAiCompatible(
+  creds: LlmCredentials,
+  system: string,
+  user: string,
+  maxTokens: number,
+  timeoutMs: number
+): Promise<LlmResult> {
   const model = creds.model || DEFAULT_MODELS.openai;
   const base = (creds.baseUrl || "https://api.openai.com/v1").replace(/\/$/, "");
 
@@ -91,10 +110,10 @@ async function callOpenAiCompatible(creds: LlmCredentials, system: string, user:
       "content-type": "application/json",
       authorization: `Bearer ${creds.apiKey}`,
     },
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
       model,
-      max_completion_tokens: MAX_TOKENS,
+      max_completion_tokens: maxTokens,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
@@ -126,8 +145,11 @@ async function callOpenAiCompatible(creds: LlmCredentials, system: string, user:
 export async function generateDigestText(
   creds: LlmCredentials,
   system: string,
-  user: string
+  user: string,
+  opts: GenerateOptions = {}
 ): Promise<LlmResult> {
-  if (creds.provider === "anthropic") return callAnthropic(creds, system, user);
-  return callOpenAiCompatible(creds, system, user);
+  const maxTokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  if (creds.provider === "anthropic") return callAnthropic(creds, system, user, maxTokens, timeoutMs);
+  return callOpenAiCompatible(creds, system, user, maxTokens, timeoutMs);
 }
