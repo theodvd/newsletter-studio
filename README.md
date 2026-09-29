@@ -34,6 +34,29 @@ takes over: on your schedule, it fetches your sources, keeps only what is
 fresh and not already sent, drafts the edition with a model, and delivers it
 by email or Slack.
 
+### Templates and preview
+
+Each digest has a layout, stored with it and changed by simply asking Lia
+("make it navy", "add a deep dive", "no images"):
+
+- **Editorial**, the default: a colored header, an intro, then sections
+  modelled on the newsletter this project grew out of. The Radar (three
+  stories with their image and a takeaway written for you), Deep Dive, The
+  Signal (short items), The Number, The Pick. Daily digests get the lighter
+  set (Radar, Signal, Number), weekly ones all five.
+- **Classic**: a plain list of articles, kept for digests created before
+  templates existed.
+
+The model never writes HTML: it fills the sections as JSON, and the template
+lays them out (`src/lib/templates/`). A layout can therefore not break the
+email, and changing it needs no change to the engine.
+
+Before launching, the Preview button shows the digest with sample content,
+then "Generate my first edition" runs the engine once on your real sources
+without sending anything (offered by the host, limited per day), and "Send it
+to me" emails it to your own address. The generated edition is stored, so a
+later design change re-renders it for free.
+
 ### Architecture
 
 ```
@@ -78,10 +101,11 @@ set by whoever hosts the instance (`ENGINE_OPENAI_BASE_URL`, `ENGINE_MODEL` in
 `src/lib/engine/llm.ts`), not chosen per user in the UI yet. The defaults are
 `claude-sonnet-4-6` for Anthropic and `gpt-5` for OpenAI.
 
-Editions are billed to you directly by your provider: an estimate of about
-$0.05 per edition on Claude Sonnet 4.6, based on typical token counts of
-around 8k input and 1.5k output tokens per run (see `src/lib/pricing.ts`).
-That works out to roughly $1 a month for a digest sent every weekday.
+Editions are billed to you directly by your provider, a few cents each on
+Claude Sonnet 4.6. Measured in production: 2 to 4 cents per edition with the
+classic layout. The editorial layout writes more, count about 8 cents (an
+estimate, see `src/lib/pricing.ts`), so under $2 a month for a digest sent
+every weekday.
 
 The host only pays for the onboarding conversation with Lia, so you can try
 the product before connecting a key, and that spend is capped weekly:
