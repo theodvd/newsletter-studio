@@ -9,8 +9,10 @@ en place la livraison quotidienne ou hebdomadaire, par email ou sur Slack.
 
 **Chacun branche sa propre clé de modèle.** Vos éditions sont écrites par le
 fournisseur de votre choix, avec votre clé, et vous payez ce qu'il vous facture,
-soit environ 0,05 $ par édition avec Claude Sonnet 4.6 (voir `src/lib/pricing.ts`),
-c'est-à-dire à peu près 1 $ par mois pour un digest quotidien en semaine. Il n'y a
+soit quelques centimes par édition avec Claude Sonnet 4.6 : 2 à 4 centimes mesurés
+en production avec la mise en page classique, environ 8 avec la mise en page
+éditoriale (estimation, voir `src/lib/pricing.ts`), donc moins de 2 $ par mois pour
+un digest quotidien en semaine. Il n'y a
 pas d'abonnement, et l'hébergeur ne supporte aucun coût récurrent. C'est ce qui
 rend ce projet tenable en open source.
 
@@ -33,6 +35,30 @@ Slack      OAuth incoming-webhook (optionnel)
 Le moteur tournait initialement dans n8n, en 22 nœuds. Il a été ramené dans le
 dépôt : un nœud Code n'est ni typé, ni testable, ni relisible en revue, et son
 bac à sable réserve des surprises. Tout est maintenant du TypeScript ordinaire.
+
+## Mises en page et aperçu
+
+Chaque veille a sa mise en page, enregistrée avec elle et modifiable en le
+demandant simplement à Lia (« passe-la en bleu marine », « ajoute un deep
+dive », « sans images ») :
+
+- **Éditoriale**, par défaut : un en-tête de couleur, une intro, puis des
+  sections reprises de la newsletter dont ce projet est issu. Le Radar (trois
+  sujets avec leur image et un encadré écrit pour le lecteur), le Deep Dive, le
+  Signal (brèves), le Chiffre, la Reco. Un digest quotidien reçoit la version
+  légère (Radar, Signal, Chiffre), un hebdomadaire les cinq.
+- **Classique** : une simple liste d'articles, conservée pour les veilles
+  créées avant les mises en page.
+
+Le modèle n'écrit jamais de HTML : il remplit les sections en JSON, et la mise
+en page les compose (`src/lib/templates/`). Elle ne peut donc pas casser
+l'email, et en changer ne touche pas au moteur.
+
+Avant le lancement, le bouton Preview montre la veille avec un contenu
+d'exemple, puis « Generate my first edition » fait tourner le moteur une fois
+sur les vraies sources sans rien envoyer (offert par l'hébergeur, limité par
+jour), et « Send it to me » l'envoie à sa propre adresse. L'édition générée est
+conservée : un changement de design ultérieur la re-rend gratuitement.
 
 ## Confidentialité
 

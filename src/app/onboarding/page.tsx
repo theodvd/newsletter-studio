@@ -99,14 +99,48 @@ const markdownComponents = {
   hr: () => <hr className="my-3 border-white/10" />,
 };
 
+/**
+ * Conversation sauvegardée d'une veille (opt-in, voir `keep_history`).
+ * Tableau vide en cas d'absence ou d'échec : on repart alors sans historique.
+ */
+async function loadHistory(subscriptionId: string): Promise<ChatMessage[]> {
+  try {
+    const res = await fetch(`/api/conversation?subscriptionId=${encodeURIComponent(subscriptionId)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (!Array.isArray(data.messages)) return [];
+    return data.messages.filter(
+      (m: unknown): m is ChatMessage =>
+        !!m &&
+        typeof m === "object" &&
+        ((m as ChatMessage).role === "user" || (m as ChatMessage).role === "assistant") &&
+        typeof (m as ChatMessage).content === "string"
+    );
+  } catch {
+    return [];
+  }
+}
+
 // ─── Page wrapper (Suspense pour useSearchParams) ──────────────────────────────
 
 export default function OnboardingPage() {
   return (
     <Suspense>
-      <Onboarding />
+      <OnboardingForRoute />
     </Suspense>
   );
+}
+
+/**
+ * Next.js garde le même composant quand seul `?edit=` change (passer de
+ * « modifier ma veille » à « New digest », ou d'une veille à une autre) :
+ * tout l'état restait en mémoire, conversation ET identifiant de veille. Un
+ * « nouveau » digest pouvait alors modifier la veille éditée juste avant. La
+ * clé force un composant neuf, donc un état vierge, à chaque changement.
+ */
+function OnboardingForRoute() {
+  const editId = useSearchParams().get("edit");
+  return <Onboarding key={editId ?? "new"} />;
 }
 
 // ─── Composant principal ───────────────────────────────────────────────────────
@@ -211,28 +245,22 @@ function Onboarding() {
         if (data?.draft) {
           setDraft(data.draft);
           setSubscriptionId(data.draft.id);
+          if (!editId) {
+            // Reprise d'une création interrompue : sa propre conversation,
+            // si l'historique est activé, sinon l'accueil habituel.
+            const history = await loadHistory(data.draft.id);
+            if (history.length > 0) {
+              setMessages([
+                ...history,
+                { role: "assistant", content: `Picking up where you left off on **${data.draft.name}**.` },
+              ]);
+            }
+          }
           if (editId) {
             // Historique sauvegardé (opt-in, voir `keep_history`) : chargé
             // AVANT le message "You're editing...", pour reprendre la
             // conversation là où elle s'était arrêtée.
-            let history: ChatMessage[] = [];
-            try {
-              const histRes = await fetch(`/api/conversation?subscriptionId=${encodeURIComponent(data.draft.id)}`);
-              if (histRes.ok) {
-                const histData = await histRes.json();
-                if (Array.isArray(histData.messages)) {
-                  history = histData.messages.filter(
-                    (m: unknown): m is ChatMessage =>
-                      !!m &&
-                      typeof m === "object" &&
-                      ((m as ChatMessage).role === "user" || (m as ChatMessage).role === "assistant") &&
-                      typeof (m as ChatMessage).content === "string"
-                  );
-                }
-              }
-            } catch {
-              // Pas grave : on repart sans historique, comme avant cette fonctionnalité.
-            }
+            const history = await loadHistory(data.draft.id);
             setMessages([
               ...history,
               {
