@@ -8,10 +8,13 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { allItems } from "@/lib/templates";
 import type { Edition } from "@/lib/templates/types";
 import { normalizeUrl } from "./parse";
-import type { Article, SubscriptionConfig } from "./types";
+import type { Article, HistoryEntry, SubscriptionConfig } from "./types";
 
 /** Nombre d'entrées d'historique chargées pour la déduplication. */
 const DEDUP_HISTORY_SIZE = 800;
+
+/** Nombre d'éditions passées résumées dans le prompt (mémoire entre éditions). */
+export const PROMPT_HISTORY_SIZE = 5;
 
 const SELECT =
   "*,sources(*),delivered_items(url,url_hash,title_key)," +
@@ -48,6 +51,36 @@ export async function loadActiveSubscriptions(): Promise<
 }
 
 /**
+ * Les dernières éditions réussies, de la plus récente à la plus ancienne.
+ *
+ * Seules celles qui ont gardé leur JSON comptent : les envois antérieurs à
+ * 0010 n'en ont pas, et une entrée vide n'apprendrait rien au modèle. En cas
+ * d'erreur de lecture, on renvoie une liste vide plutôt que de bloquer
+ * l'édition : la mémoire améliore l'édition, elle n'en est pas une condition.
+ */
+export async function loadHistory(subscriptionId: string): Promise<HistoryEntry[]> {
+  const db = createAdminClient();
+  const { data, error } = await db
+    .from("deliveries")
+    .select("sent_at, edition, memory")
+    .eq("subscription_id", subscriptionId)
+    .eq("status", "success")
+    .not("edition", "is", null)
+    .order("sent_at", { ascending: false })
+    .limit(PROMPT_HISTORY_SIZE);
+
+  if (error) {
+    console.error("[engine] lecture de l'historique impossible :", error.message);
+    return [];
+  }
+  return (data ?? []).map((row) => ({
+    sentAt: row.sent_at as string,
+    edition: (row.edition as Edition | null) ?? null,
+    memory: (row.memory as string | null) ?? null,
+  }));
+}
+
+/**
  * Enregistre l'édition et, seulement si l'envoi a réussi, les articles envoyés.
  *
  * Le point capital est là : marquer les articles comme envoyés alors que
@@ -61,6 +94,8 @@ export async function logDelivery(params: {
   error?: string | null;
   edition: Edition | null;
   articles: Article[];
+  /** Ligne de mémoire renvoyée par le modèle, relue par les éditions suivantes. */
+  memory?: string | null;
 }): Promise<void> {
   const db = createAdminClient();
 
@@ -74,6 +109,8 @@ export async function logDelivery(params: {
     status: params.status,
     items,
     error: params.error ?? null,
+    edition: params.edition,
+    memory: params.memory ?? null,
   });
   if (deliveryError) {
     console.error("[engine] écriture de la delivery impossible :", deliveryError.message);

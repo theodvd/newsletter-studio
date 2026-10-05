@@ -50,10 +50,28 @@ Le destinataire d'un digest email n'est pas modifiable : il est résolu depuis
 l'adresse du compte au moment de l'envoi. C'est délibéré, cela évite que
 l'application serve de relais d'emails vers des tiers.
 
+### Réglages d'opérateur (SQL uniquement)
+
+Trois colonnes de `subscriptions` ne sont modifiables que par SQL, jamais
+depuis l'application (voir `0010_growfin.sql`) :
+
+- `model`, `effort` : le modèle et l'effort de raisonnement propres à la
+  veille (sinon `ENGINE_MODEL` et l'effort par défaut du modèle).
+- `brevo_list_id` : envoie l'édition en campagne Brevo à cette liste, avec
+  lien de désinscription, au lieu de l'adresse du compte. Ne fonctionne que
+  si le propriétaire figure dans `ENGINE_LIST_SEND_USER_IDS` : c'est ce qui
+  permet à l'hébergeur de faire tourner sa propre newsletter sur le moteur
+  sans ouvrir l'envoi en masse aux autres comptes.
+
+Quand une édition échoue, l'opérateur reçoit un email (`ENGINE_ALERT_EMAIL`).
+
 ## Historique et doublons
 
-- **`deliveries`** : une ligne par édition, avec son statut et les articles
-  retenus. C'est là qu'on lit pourquoi un envoi a échoué.
+- **`deliveries`** : une ligne par édition, avec son statut, les articles
+  retenus, l'édition complète et sa ligne de mémoire. C'est là qu'on lit
+  pourquoi un envoi a échoué. Les 5 dernières éditions réussies sont résumées
+  dans le prompt de la suivante, pour qu'elle ne reprenne ni les mêmes sujets
+  ni les mêmes anecdotes.
 - **`delivered_items`** : les articles déjà envoyés, c'est la mémoire
   anti-doublons. Pour rejouer un envoi avec le même contenu, supprimer les
   lignes de la veille concernée.

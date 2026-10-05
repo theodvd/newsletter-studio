@@ -95,6 +95,8 @@ async function main(): Promise<void> {
   const outPath = path.join(outDir, `dry-run-${subscriptionId}.html`);
   fs.writeFileSync(outPath, outcome.preview.html, "utf8");
   console.log(`Aperçu écrit : ${outPath} (${outcome.itemsSent ?? 0} articles cités)`);
+  console.log(`Objet : ${outcome.preview.subject}`);
+  console.log(`Mémoire renvoyée : ${outcome.preview.memory ?? "(aucune)"}`);
   const { costUsd } = await import("../src/lib/pricing");
   const inTok = outcome.inputTokens ?? 0;
   const outTok = outcome.outputTokens ?? 0;
