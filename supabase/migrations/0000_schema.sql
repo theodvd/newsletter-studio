@@ -49,6 +49,13 @@ create table if not exists public.subscriptions (
   -- colonne. Serveur-only : ne JAMAIS l'ajouter au grant update ci-dessous.
   design            jsonb not null default '{"template":"editorial"}'::jsonb
     constraint subscriptions_design_is_object check (jsonb_typeof(design) = 'object'),
+  -- Réglages d'opérateur, serveur-only (voir 0010_growfin.sql) : modèle et
+  -- effort propres à la veille, envoi à une liste Brevo.
+  model             text,
+  effort            text
+    constraint subscriptions_effort_valid
+    check (effort is null or effort in ('low', 'medium', 'high', 'xhigh', 'max')),
+  brevo_list_id     integer,
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
@@ -79,7 +86,11 @@ create table if not exists public.deliveries (
   sent_at         timestamptz not null default now(),
   status          text not null default 'success' check (status in ('success', 'error')),
   items           jsonb,
-  error           text
+  error           text,
+  -- Édition complète et ligne de mémoire : nourrissent le prompt des éditions
+  -- suivantes (voir 0010_growfin.sql).
+  edition         jsonb,
+  memory          text
 );
 
 create index if not exists deliveries_subscription_sent_idx

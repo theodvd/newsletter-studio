@@ -45,6 +45,12 @@ export type SubscriptionConfig = {
   status: string;
   /** Réglages de mise en page (colonne `design`, JSONB) : voir `resolveDesign`. */
   design?: unknown;
+  /** Modèle propre à la veille ; null = ENGINE_MODEL. Serveur-only (0010). */
+  model?: string | null;
+  /** Effort de raisonnement (Anthropic) ; null = défaut du modèle. Serveur-only (0010). */
+  effort?: string | null;
+  /** Liste Brevo destinataire ; null = adresse du compte. Voir `canSendToList`. */
+  brevo_list_id?: number | null;
   sources: SourceRow[];
   delivered_items: DeliveredItemRow[];
   profiles: {
@@ -54,6 +60,14 @@ export type SubscriptionConfig = {
     llm_provider: string | null;
     llm_key_encrypted: string | null;
   } | null;
+};
+
+/** Une édition passée, telle que le prompt de la suivante la résume. */
+export type HistoryEntry = {
+  sentAt: string;
+  edition: Edition | null;
+  /** Ligne de mémoire renvoyée par le modèle pour cette édition. */
+  memory: string | null;
 };
 
 /** Métadonnées d'une source, portées jusqu'au parsing. */
@@ -89,5 +103,5 @@ export type RunOutcome = {
   inputTokens?: number;
   outputTokens?: number;
   /** Rendu déjà produit, renvoyé seulement en `dryRun` (aperçu, jamais envoyé). */
-  preview?: { subject: string; html: string; slack: SlackPayload; edition: Edition };
+  preview?: { subject: string; html: string; slack: SlackPayload; edition: Edition; memory?: string | null };
 };

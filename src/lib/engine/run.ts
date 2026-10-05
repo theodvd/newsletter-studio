@@ -8,16 +8,20 @@ import { safeFetchText } from "@/lib/tools/safe-fetch";
 import { allItems, getTemplate, resolveDesign } from "@/lib/templates";
 import { formatEditionDate } from "@/lib/templates/i18n";
 import type { Edition, RenderContext, SlackPayload, SpecContext } from "@/lib/templates/types";
-import { loadConfig, logDelivery } from "./config";
+import { alertFailure } from "./alert";
+import { loadConfig, loadHistory, logDelivery } from "./config";
 import { enrichImages } from "./images";
 import { generateDigestText, type LlmCredentials, type LlmProvider } from "./llm";
 import { parseAndFilter, type FetchedSource } from "./parse";
-import { buildPrompt, parseEdition } from "./prompt";
-import { sendEmail, sendSlack } from "./send";
+import { buildPrompt, parseEditionWithMemory } from "./prompt";
+import { canSendToList, sendBrevoCampaign, sendEmail, sendSlack, withUnsubscribeLink } from "./send";
 import type { RunOutcome, SourceFetchTarget, SubscriptionConfig } from "./types";
 
 /** Au-delà, l'editorial (plus long à générer) risque le timeout par défaut. */
 const EDITORIAL_TIMEOUT_MS = 240000;
+
+/** Marge de sortie pour le champ `memory_update` (400 caractères demandés). */
+const MEMORY_OUTPUT_TOKENS = 300;
 
 /** Récupère toutes les sources en parallèle, à travers la garde anti-SSRF. */
 async function fetchSources(config: SubscriptionConfig): Promise<FetchedSource[]> {
@@ -56,7 +60,9 @@ async function fetchSources(config: SubscriptionConfig): Promise<FetchedSource[]
  * au BYOK, et au développement.
  */
 function resolveCredentials(config: SubscriptionConfig): LlmCredentials | null {
-  const model = process.env.ENGINE_MODEL || null;
+  // Le modèle propre à la veille (réglé par l'opérateur) passe avant le modèle global.
+  const model = config.model || process.env.ENGINE_MODEL || null;
+  const effort = config.effort || null;
   const baseUrl = process.env.ENGINE_OPENAI_BASE_URL || null;
 
   const stored = config.profiles?.llm_key_encrypted;
@@ -65,6 +71,7 @@ function resolveCredentials(config: SubscriptionConfig): LlmCredentials | null {
       provider: (config.profiles?.llm_provider as LlmProvider) || "anthropic",
       apiKey: decryptSecret(stored),
       model,
+      effort,
       baseUrl,
     };
   }
@@ -82,6 +89,7 @@ function resolveCredentials(config: SubscriptionConfig): LlmCredentials | null {
     provider: (process.env.ENGINE_FALLBACK_PROVIDER as LlmProvider) || "anthropic",
     apiKey: fallback,
     model,
+    effort,
     baseUrl,
   };
 }
@@ -119,15 +127,34 @@ export async function runSubscription(
   const fail = async (reason: string): Promise<RunOutcome> => {
     if (!opts.dryRun) {
       await logDelivery({ subscriptionId, status: "error", error: reason, edition: null, articles: [] });
+      await alertFailure({ subscriptionId, name: config.name, reason });
     }
     return { subscriptionId, status: "error", reason };
   };
 
-  const credentials = opts.credentials ?? resolveCredentials(config);
+  // Envoi à une liste : vérifié AVANT tout appel au modèle, pour ne rien
+  // dépenser sur une édition qui ne pourrait pas partir.
+  const toList = config.channel === "email" && config.brevo_list_id != null;
+  if (toList && !opts.dryRun && !canSendToList(config.user_id)) {
+    return fail("Envoi à une liste refusé : ce compte n'est pas dans ENGINE_LIST_SEND_USER_IDS.");
+  }
+
+  // Des identifiants imposés (aperçu, script) gardent le modèle et l'effort de
+  // la veille quand ils ne les fixent pas : l'aperçu doit ressembler à l'envoi.
+  const credentials = opts.credentials
+    ? {
+        ...opts.credentials,
+        model: opts.credentials.model ?? config.model ?? process.env.ENGINE_MODEL ?? null,
+        effort: opts.credentials.effort ?? config.effort ?? null,
+      }
+    : resolveCredentials(config);
   if (!credentials) {
     // Sans clé, rien ne peut être produit. On n'écrit pas de delivery en
-    // erreur à chaque tick : ce serait du bruit, pas une panne.
-    return { subscriptionId, status: "skipped", reason: "Aucune clé API configurée pour ce compte." };
+    // erreur à chaque tick : ce serait du bruit, pas une panne. Sauf pour une
+    // liste : des lecteurs attendent l'édition, l'opérateur doit le savoir.
+    const reason = "Aucune clé API configurée pour ce compte.";
+    if (toList && !opts.dryRun) return fail(reason);
+    return { subscriptionId, status: "skipped", reason };
   }
 
   const language = config.language || "fr";
@@ -158,15 +185,19 @@ export async function runSubscription(
     console.log(
       `[engine] ${subscriptionId} : aucun article frais (fenêtre ${lookback}h, seuil ${cutoff.toISOString()}).`
     );
+    // Même exception que pour la clé : une newsletter à une liste qui ne part
+    // pas est une panne pour ses lecteurs (et l'échec stoppe les relances du tick).
+    if (toList && !opts.dryRun) return fail("Aucun article frais : édition non envoyée.");
     return { subscriptionId, status: "skipped", reason: "Aucun article frais." };
   }
 
-  const { system, user } = buildPrompt(config, articles, now, template, specCtx);
+  const history = await loadHistory(subscriptionId);
+  const { system, user } = buildPrompt(config, articles, now, template, specCtx, history);
 
   let generated;
   try {
     generated = await generateDigestText(credentials, system, user, {
-      maxTokens: template.maxOutputTokens(specCtx),
+      maxTokens: template.maxOutputTokens(specCtx) + MEMORY_OUTPUT_TOKENS,
       timeoutMs: design.template === "editorial" ? EDITORIAL_TIMEOUT_MS : undefined,
     });
   } catch (e) {
@@ -174,8 +205,9 @@ export async function runSubscription(
   }
 
   let edition: Edition;
+  let memory: string | null;
   try {
-    edition = parseEdition(generated.text, template, specCtx);
+    ({ edition, memory } = parseEditionWithMemory(generated.text, template, specCtx));
   } catch (e) {
     return fail(e instanceof Error ? e.message : "réponse du modèle invalide");
   }
@@ -207,14 +239,26 @@ export async function runSubscription(
       // `edition` (le JSON, pas seulement son rendu) : l'étape « preview » la
       // stocke pour pouvoir re-rendre gratuitement un futur changement de
       // design, sans rappeler le modèle.
-      preview: { subject: edition.subject, html, slack, edition },
+      preview: { subject: edition.subject, html, slack, edition, memory },
     };
   }
 
-  const sent =
-    config.channel === "slack"
-      ? await sendSlack(template.renderSlack(renderCtx), config.destination)
-      : await sendEmail({ subject: edition.subject, html: template.renderEmail(renderCtx) }, config.profiles?.email || "");
+  let sent;
+  if (config.channel === "slack") {
+    sent = await sendSlack(template.renderSlack(renderCtx), config.destination);
+  } else if (toList) {
+    sent = await sendBrevoCampaign({
+      ownerUserId: config.user_id,
+      listId: config.brevo_list_id as number,
+      name: `${config.name} · ${dateLabel}`,
+      subject: edition.subject,
+      preheader: edition.preheader,
+      html: withUnsubscribeLink(template.renderEmail(renderCtx), language),
+      senderName: design.title || config.name,
+    });
+  } else {
+    sent = await sendEmail({ subject: edition.subject, html: template.renderEmail(renderCtx) }, config.profiles?.email || "");
+  }
 
   if (!sent.ok) {
     // L'édition est perdue, mais les articles NE sont PAS marqués envoyés :
@@ -222,7 +266,7 @@ export async function runSubscription(
     return fail(sent.error);
   }
 
-  await logDelivery({ subscriptionId, status: "success", error: null, edition, articles });
+  await logDelivery({ subscriptionId, status: "success", error: null, edition, articles, memory });
 
   return {
     subscriptionId,
