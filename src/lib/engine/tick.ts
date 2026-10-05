@@ -14,6 +14,17 @@ import type { RunOutcome } from "./types";
 const ATTEMPT_WINDOW_DAYS = 7;
 
 /**
+ * Veilles en cours d'exécution dans ce processus.
+ *
+ * Une édition n'écrit sa `delivery` qu'à la fin. Si elle dure plus que
+ * l'intervalle du cron (5 min, ce qui arrive avec un modèle qui réfléchit
+ * longuement), le tick suivant la croirait encore due et en lancerait une
+ * seconde : un doublon chez les lecteurs. Le moteur tourne dans un seul
+ * conteneur, un verrou en mémoire suffit.
+ */
+const inFlight = new Set<string>();
+
+/**
  * Dernière TENTATIVE d'envoi par veille, succès comme échec.
  *
  * On prend en compte les échecs volontairement : sinon une veille dont l'envoi
@@ -86,7 +97,8 @@ export async function runTick(now: Date = new Date()): Promise<TickReport> {
       now,
       lastSentAt: attempts.get(sub.id) ?? null,
     });
-    if (due) dueIds.push(sub.id);
+    if (due && !inFlight.has(sub.id)) dueIds.push(sub.id);
+    else if (due) console.log(`[engine] ${sub.id} : édition déjà en cours, pas de relance.`);
   }
 
   // Entretien quotidien : purge des conversations signalées expirées. Une fois
@@ -96,6 +108,10 @@ export async function runTick(now: Date = new Date()): Promise<TickReport> {
     if (purged > 0) console.log(`[engine] purge : ${purged} conversation(s) signalée(s) expirée(s)`);
   }
 
+  // Réservées tout de suite, avant toute attente : un tick concurrent qui
+  // arriverait pendant la file d'attente de `mapWithConcurrency` les verra.
+  for (const id of dueIds) inFlight.add(id);
+
   const outcomes = await mapWithConcurrency(dueIds, TICK_CONCURRENCY, async (id): Promise<RunOutcome> => {
     try {
       return await runSubscription(id, now);
@@ -103,6 +119,8 @@ export async function runTick(now: Date = new Date()): Promise<TickReport> {
       // Filet de sécurité : runSubscription ne doit jamais lever, mais un tick
       // ne doit surtout pas s'arrêter sur une veille.
       return { subscriptionId: id, status: "error", reason: e instanceof Error ? e.message : "erreur inattendue" };
+    } finally {
+      inFlight.delete(id);
     }
   });
 
