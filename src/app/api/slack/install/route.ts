@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
  * l'écran officiel Slack ; on récupère une URL de webhook au retour.
  */
 export async function GET(request: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

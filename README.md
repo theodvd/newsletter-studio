@@ -60,7 +60,7 @@ later design change re-renders it for free.
 ### Architecture
 
 ```
-Next.js 14 (this repo)
+Next.js 15 (this repo)
   /onboarding          conversation with Lia
                         (source search, RSS validation, save)
   /dashboard           your digests, and connecting your API key

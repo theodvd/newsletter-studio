@@ -145,7 +145,7 @@ async function saveConfig(
   input: SaveConfigInput,
   knownSubscriptionId: string | null
 ) {
-  const supabase = createClient();
+  const supabase = await createClient();
 
   // Cadence : validée ici, sur TOUS les chemins (création comme édition).
   // Le chemin d'édition poussait auparavant le cron dans le planificateur sans
@@ -375,7 +375,7 @@ function sseEvent(
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

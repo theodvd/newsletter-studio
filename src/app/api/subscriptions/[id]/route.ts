@@ -12,7 +12,7 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
  */
 
 async function getOwnedSubscription(id: string) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -26,8 +26,8 @@ async function getOwnedSubscription(id: string) {
   return { sub, userId: user.id, unauthorized: false };
 }
 
-export async function PATCH(request: Request, { params }: { params: { id: string } }) {
-  const { sub, userId, unauthorized } = await getOwnedSubscription(params.id);
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { sub, userId, unauthorized } = await getOwnedSubscription((await params).id);
   if (unauthorized) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   if (!sub) return NextResponse.json({ error: "Veille introuvable" }, { status: 404 });
 
@@ -51,8 +51,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   return NextResponse.json({ ok: true, status });
 }
 
-export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
-  const { sub, userId, unauthorized } = await getOwnedSubscription(params.id);
+export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { sub, userId, unauthorized } = await getOwnedSubscription((await params).id);
   if (unauthorized) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   if (!sub) return NextResponse.json({ error: "Veille introuvable" }, { status: 404 });
 

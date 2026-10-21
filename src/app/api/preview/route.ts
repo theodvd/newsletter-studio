@@ -22,7 +22,7 @@ const SELECT = "id, name, frequency_cron, status, design, language";
  * puisque cette clé, elle, ignore le RLS.
  */
 async function loadOwnedSubscription(subscriptionId: string) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -142,7 +142,7 @@ async function generate(
   // Plafonds de dépense HEBDOMADAIRES sur la clé de l'hébergeur : cette
   // génération tourne sur ANTHROPIC_API_KEY, pas sur la clé BYOK de
   // l'utilisateur, exactement comme la conversation d'onboarding.
-  const supabase = createClient();
+  const supabase = await createClient();
   const spendVerdict = await checkSpendAllowed(supabase);
   if (!spendVerdict.allowed) {
     return NextResponse.json({ error: spendVerdict.reason }, { status: 429 });
