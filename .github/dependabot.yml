@@ -1,0 +1,37 @@
+# Veille sécurité : Dependabot quotidien, fusion auto des « correctifs » par ~/DEV/Repos/veille-secu
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directories: ["/"]
+    schedule:
+      interval: "daily"
+      time: "07:00"
+      timezone: "Europe/Paris"
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    groups:
+      correctifs:
+        update-types: ["patch"]
+      securite-correctifs:
+        applies-to: security-updates
+        update-types: ["patch"]
+      evolutions:
+        update-types: ["minor"]
+  - package-ecosystem: "docker"
+    directories: ["/"]
+    schedule:
+      interval: "daily"
+      time: "07:00"
+      timezone: "Europe/Paris"
+    cooldown:
+      default-days: 3
+    open-pull-requests-limit: 5
+    groups:
+      correctifs:
+        update-types: ["patch"]
+      securite-correctifs:
+        applies-to: security-updates
+        update-types: ["patch"]
+      evolutions:
+        update-types: ["minor"]
