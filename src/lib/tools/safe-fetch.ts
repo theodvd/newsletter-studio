@@ -118,6 +118,10 @@ export async function safeFetchText(
         headers: { "User-Agent": "Mozilla/5.0 (compatible; LiaVeille/1.0)" },
         signal: AbortSignal.timeout(TIMEOUT_MS),
         redirect: "manual", // on gère les redirections nous-mêmes
+        // Jamais de cache Next : une édition doit lire la source telle
+        // qu'elle est au moment du tick. C'est déjà le défaut en Next 15,
+        // on l'écrit pour que ça ne dépende plus du contexte d'appel.
+        cache: "no-store",
       });
 
       if (res.status >= 300 && res.status < 400) {
