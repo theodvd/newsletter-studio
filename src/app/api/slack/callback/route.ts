@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const subscriptionId = searchParams.get("state");
 
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

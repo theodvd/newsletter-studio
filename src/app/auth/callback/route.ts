@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   const base = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin;
 
   if (code) {
-    const supabase = createClient();
+    const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
       return NextResponse.redirect(`${base}/`);

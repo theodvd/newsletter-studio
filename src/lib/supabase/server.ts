@@ -5,9 +5,12 @@ import { cookies } from "next/headers";
 /**
  * Client Supabase côté serveur (Server Components, API routes).
  * La session est lue/écrite dans les cookies de la requête.
+ *
+ * Asynchrone depuis Next 15 : `cookies()` renvoie une Promise, il faut donc
+ * l'attendre ici, et chaque appelant écrit `await createClient()`.
  */
-export function createClient() {
-  const cookieStore = cookies();
+export async function createClient() {
+  const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,

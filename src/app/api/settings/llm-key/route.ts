@@ -56,7 +56,7 @@ async function keyWorks(provider: LlmProvider, apiKey: string): Promise<{ ok: bo
 }
 
 export async function POST(request: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

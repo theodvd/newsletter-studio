@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * d'une console d'administration.
  */
 export default async function FlagsPage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -14,7 +14,7 @@ import { LIMITS } from "@/lib/plan";
  *  4. Présence d'une clé API : sans elle, rien ne pourrait être produit
  */
 export async function POST(request: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

@@ -7,8 +7,8 @@ import { isAdmin } from "@/lib/admin";
  * Réservé aux adresses de ADMIN_EMAILS : la table est inaccessible au client,
  * l'écriture passe donc par la clé service, après vérification de l'identité.
  */
-export async function PATCH(_request: Request, { params }: { params: { id: string } }) {
-  const supabase = createClient();
+export async function PATCH(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -17,7 +17,7 @@ export async function PATCH(_request: Request, { params }: { params: { id: strin
   // d'administration existe.
   if (!isAdmin(user?.email)) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const id = Number(params.id);
+  const id = Number((await params).id);
   if (!Number.isInteger(id) || id <= 0) {
     return NextResponse.json({ error: "Identifiant invalide" }, { status: 400 });
   }

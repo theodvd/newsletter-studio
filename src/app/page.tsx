@@ -7,7 +7,7 @@ import { CrystalBackdrop } from "@/components/crystal-backdrop";
  * Home: editorial hero + two actions (new digest / my digests).
  */
 export default async function HomePage() {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();

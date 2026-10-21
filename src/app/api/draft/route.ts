@@ -10,7 +10,7 @@ const DRAFT_RESUME_WINDOW_MS = 24 * 60 * 60 * 1000;
  * (permet de re-cliquer « Valider et lancer » sans refaire la conversation).
  */
 export async function GET(request: Request) {
-  const supabase = createClient();
+  const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
