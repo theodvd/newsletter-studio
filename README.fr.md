@@ -19,7 +19,7 @@ rend ce projet tenable en open source.
 ## Comment ça marche
 
 ```
-Next.js 14 (ce dépôt)
+Next.js 15 (ce dépôt)
  ├─ /onboarding          conversation avec Lia
  │                       (recherche de sources, validation RSS, sauvegarde)
  ├─ /dashboard           mes veilles, et la connexion de ma clé API
