@@ -1,10 +1,11 @@
-# Veille sécurité : Dependabot quotidien, fusion auto des « correctifs » par ~/DEV/Repos/veille-secu
+# Veille sécurité : Dependabot hebdomadaire (lundi 7h ; correctifs de sécurité immédiats), fusion auto des « correctifs » par ~/DEV/Repos/veille-secu
 version: 2
 updates:
   - package-ecosystem: "npm"
     directories: ["/"]
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
       time: "07:00"
       timezone: "Europe/Paris"
     cooldown:
@@ -21,7 +22,8 @@ updates:
   - package-ecosystem: "docker"
     directories: ["/"]
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
       time: "07:00"
       timezone: "Europe/Paris"
     cooldown:
